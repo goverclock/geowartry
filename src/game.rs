@@ -16,9 +16,9 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(WorldCoords(Vec2 { x: 0., y: 0. }))
-            .add_systems(OnEnter(GameState::Game), setup)
-            .add_systems(OnExit(GameState::Game), cleanup)
-            .add_systems(Update, change_position.run_if(in_state(GameState::Game)));
+            .add_systems(OnEnter(GameState::InGame), setup)
+            .add_systems(OnExit(GameState::InGame), cleanup)
+            .add_systems(Update, change_position.run_if(in_state(GameState::InGame)));
     }
 }
 

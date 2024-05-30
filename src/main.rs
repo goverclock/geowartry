@@ -7,7 +7,7 @@ mod menu;
 enum GameState {
     #[default]
     Menu,
-    Game,
+    InGame,
 }
 
 fn main() {
