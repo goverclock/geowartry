@@ -1,0 +1,134 @@
+use bevy::prelude::*;
+use bevy_quickmenu::{
+    style::Stylesheet, ActionTrait, Menu, MenuItem, MenuState, QuickMenuPlugin, ScreenTrait,
+};
+
+use crate::GameState;
+
+pub struct MenuPlugin;
+
+/// This custom event can be emitted by the action handler (below) in order to
+/// process actions with access to the bevy ECS
+#[derive(Debug, Event)]
+enum BasicEvent {
+    Quit,
+}
+
+/// This state represents the UI. Mutations to this state (via `MenuState::state_mut`)
+/// cause a re-render of the menu UI
+#[derive(Debug, Clone, Default)]
+struct BasicState {
+    boolean1: bool,
+    boolean2: bool,
+}
+
+impl Plugin for MenuPlugin {
+    fn build(&self, app: &mut App) {
+        app
+            // Register a event that can be called from your action handler
+            .add_event::<BasicEvent>()
+            .add_plugins(QuickMenuPlugin::<Screens>::new())
+            .add_systems(OnEnter(GameState::Menu), setup)
+            .add_systems(Update, event_reader.run_if(in_state(GameState::Menu)));
+    }
+}
+
+fn setup(mut cmds: Commands) {
+    info!("menu: setup");
+    let sheet = Stylesheet::default();
+
+    cmds.insert_resource(MenuState::new(
+        BasicState::default(),
+        Screens::Root,
+        Some(sheet),
+    ))
+}
+
+/// The possible actions in our settings
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+enum Actions {
+    Close,
+    Toggle1,
+    Toggle2,
+}
+
+/// Handle the possible actions
+impl ActionTrait for Actions {
+    type State = BasicState;
+    type Event = BasicEvent;
+    fn handle(&self, state: &mut BasicState, event_writer: &mut EventWriter<BasicEvent>) {
+        match self {
+            Actions::Close => {
+                event_writer.send(BasicEvent::Quit);
+            }
+            Actions::Toggle1 => {
+                state.boolean1 = !state.boolean1;
+            }
+            Actions::Toggle2 => {
+                state.boolean2 = !state.boolean2;
+            }
+        }
+    }
+}
+
+/// All possible screens in our example
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+enum Screens {
+    Root,
+    Booleans,
+}
+
+/// Map from from `Screens` to the actual menu
+impl ScreenTrait for Screens {
+    type Action = Actions;
+    type State = BasicState;
+    fn resolve(&self, state: &BasicState) -> Menu<Screens> {
+        match self {
+            Screens::Root => root_menu(state),
+            Screens::Booleans => boolean_menu(state),
+        }
+    }
+}
+
+/// The `root` menu that is displayed first
+fn root_menu(_state: &BasicState) -> Menu<Screens> {
+    Menu::new(
+        "root",
+        vec![
+            MenuItem::headline("Basic Example"),
+            MenuItem::action("Close", Actions::Close),
+            MenuItem::label("A submenu"),
+            MenuItem::screen("Boolean", Screens::Booleans),
+        ],
+    )
+}
+
+/// The boolean menu which is accessed from the `Screens::Boolean` entry in the root_menu
+fn boolean_menu(state: &BasicState) -> Menu<Screens> {
+    Menu::new(
+        "boolean",
+        vec![
+            MenuItem::label("Toggles some booleans"),
+            MenuItem::action("Toggle Boolean 1", Actions::Toggle1).checked(state.boolean1),
+            MenuItem::action("Toggle Boolean 2", Actions::Toggle2).checked(state.boolean2),
+        ],
+    )
+}
+
+/// This allows to react to actions with custom bevy resources or eventwriters or queries.
+/// In this example we use it to close the menu
+fn event_reader(
+    mut cmds: Commands,
+    mut event_reader: EventReader<BasicEvent>,
+    mut game_state: ResMut<NextState<GameState>>,
+) {
+    for event in event_reader.read() {
+        match event {
+            BasicEvent::Quit => {
+                info!("menu: cleanup");
+                bevy_quickmenu::cleanup(&mut cmds);
+                game_state.set(GameState::Game)
+            }
+        }
+    }
+}
