@@ -43,7 +43,7 @@ fn setup(
 }
 
 fn cleanup(mut cmds: Commands, query: Query<Entity, With<Ball>>) {
-    info!("game: setup");
+    info!("game: cleanup");
     for e in &query {
         cmds.entity(e).despawn();
     }

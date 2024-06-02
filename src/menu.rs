@@ -1,12 +1,12 @@
 use bevy::{app::AppExit, prelude::*};
 
-use crate::GameState;
+use crate::{GameSettings, GameSettingsType, GameState};
 
 #[derive(Default, Debug, States, Hash, Eq, PartialEq, Clone, Copy)]
 enum MenuState {
-    #[default]
     Main,
     Settings,
+    #[default]
     Disabled, // not in menu, e.g. InGame state
 }
 
@@ -24,15 +24,22 @@ struct OnMenuMainScreen;
 #[derive(Component)]
 struct OnMenuSettingsScreen;
 
-#[derive(Component)]
-struct SelectedOption;
-
-#[derive(Component)]
+#[derive(Component, Clone, Copy)]
 enum MenuButtonAction {
     Play,
-    Settings,
+    ToSettings,
+    MusicUp,
+    MusicDown,
+    SoundUp,
+    SoundDown,
     BackToMainMenu,
-    Quit,
+    QuitGame,
+}
+
+enum MenuItemType {
+    Title,
+    Button,
+    Value, // serve for settings
 }
 
 pub struct MenuPlugin;
@@ -40,7 +47,7 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<MenuState>()
-            .add_systems(OnEnter(GameState::Menu), menu_setup)
+            .add_systems(OnEnter(GameState::Menu), setup)
             .add_systems(OnEnter(MenuState::Main), main_menu_setup)
             .add_systems(OnExit(MenuState::Main), despawn_screen::<OnMenuMainScreen>)
             .add_systems(OnEnter(MenuState::Settings), settings_menu_setup)
@@ -50,7 +57,8 @@ impl Plugin for MenuPlugin {
             )
             .add_systems(
                 Update,
-                (menu_action, button_colors).run_if(in_state(GameState::Menu)),
+                (menu_action, button_colors, refresh_setting_value)
+                    .run_if(in_state(GameState::Menu)),
             );
     }
 }
@@ -62,6 +70,7 @@ fn menu_action(
     >,
     mut app_exit_events: EventWriter<AppExit>,
     mut game_state: ResMut<NextState<GameState>>,
+    mut game_settings: ResMut<GameSettings>,
     mut menu_state: ResMut<NextState<MenuState>>,
 ) {
     for (interaction, menu_button_action) in &interaction_query {
@@ -74,11 +83,11 @@ fn menu_action(
                 game_state.set(GameState::InGame);
                 menu_state.set(MenuState::Disabled);
             }
-            MenuButtonAction::Settings => {
+            MenuButtonAction::ToSettings => {
                 info!("You pressed Settings button!");
                 menu_state.set(MenuState::Settings);
             }
-            MenuButtonAction::Quit => {
+            MenuButtonAction::QuitGame => {
                 info!("You pressed Quit button!");
                 app_exit_events.send(AppExit);
             }
@@ -86,6 +95,18 @@ fn menu_action(
                 info!("You pressed Back button!");
                 menu_state.set(MenuState::Main);
             }
+            MenuButtonAction::MusicUp => {
+                game_settings.music += 1;
+                game_settings.music = game_settings.music.min(GameSettings::MUSIC_MAX);
+                info!("MusicUp: {}", game_settings.music);
+            }
+            MenuButtonAction::MusicDown => {
+                if game_settings.music > 0 {
+                    game_settings.music -= 1;
+                }
+                info!("MusicDown: {}", game_settings.music);
+            }
+            _ => todo!(),
         }
     }
 }
@@ -105,6 +126,21 @@ fn button_colors(
     }
 }
 
+fn refresh_setting_value(
+    mut query: Query<(&mut Text, &GameSettingsType)>,
+    game_settings: Res<GameSettings>,
+) {
+    let ts = TextStyle {
+        font_size: 40.0,
+        color: TEXT_COLOR,
+        ..default()
+    };
+    for (mut text, &setting_type) in &mut query {
+        let value = get_setting_value(&game_settings, setting_type);
+        *text = Text::from_section(value.to_string(), ts.clone());
+    }
+}
+
 fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut cmds: Commands) {
     info!("despaw_screen: called");
     for e in &to_despawn {
@@ -112,15 +148,41 @@ fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut cmds: Co
     }
 }
 
-fn menu_setup(mut menu_state: ResMut<NextState<MenuState>>) {
+fn setup(mut menu_state: ResMut<NextState<MenuState>>) {
     info!("menu_setup: begin");
     menu_state.set(MenuState::Main); // This will queue up state transitions to be performed during the next frame update cycle.
 }
 
-fn main_menu_setup(mut cmds: Commands) {
-    info!("main_menu_setup: begin");
+struct MenuItem<'a> {
+    item_type: MenuItemType,
+    text: &'a str,
+    actions: Vec<MenuButtonAction>,
+    value_type: Option<GameSettingsType>,
+}
+
+fn get_setting_value(game_settings: &Res<GameSettings>, value_type: GameSettingsType) -> usize {
+    match value_type {
+        GameSettingsType::Music => game_settings.music,
+        GameSettingsType::Sound => game_settings.sound,
+    }
+}
+
+fn setup_from_item_list(
+    mut cmds: Commands,
+    game_settings: Res<GameSettings>,
+    comp: impl Component,
+    item_list: Vec<MenuItem>, // item type, text, action(for buttons only, None for non-buttons)
+) {
     let button_style = Style {
         width: Val::Px(250.0),
+        height: Val::Px(65.0),
+        margin: UiRect::all(Val::Px(20.0)),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..default()
+    };
+    let slim_button_style = Style {
+        width: Val::Px(50.0),
         height: Val::Px(65.0),
         margin: UiRect::all(Val::Px(20.0)),
         justify_content: JustifyContent::Center,
@@ -132,7 +194,11 @@ fn main_menu_setup(mut cmds: Commands) {
         color: TEXT_COLOR,
         ..default()
     };
-
+    let slim_button_text_style = TextStyle {
+        font_size: 20.0,
+        color: TEXT_COLOR,
+        ..default()
+    };
     cmds.spawn((
         // pure color background
         // put everything in center
@@ -147,7 +213,7 @@ fn main_menu_setup(mut cmds: Commands) {
             background_color: Color::WHITE.into(),
             ..default()
         },
-        OnMenuMainScreen,
+        comp, // root node is tagged, for the convenience of despawn()
     ))
     .with_children(|parent| {
         parent
@@ -161,126 +227,159 @@ fn main_menu_setup(mut cmds: Commands) {
                 ..default()
             })
             .with_children(|parent| {
-                parent.spawn(
-                    // game name
-                    TextBundle::from_section(
-                        "geowartry",
-                        TextStyle {
-                            font_size: 80.0,
-                            color: TEXT_COLOR,
-                            ..default()
-                        },
-                    )
-                    .with_style(Style {
-                        margin: UiRect::all(Val::Px(50.0)),
-                        ..default()
-                    }),
-                );
-
-                // play button
-                parent
-                    .spawn((
-                        ButtonBundle {
-                            style: button_style.clone(),
-                            background_color: Color::GRAY.into(),
-                            ..default()
-                        },
-                        MenuButtonAction::Play,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn(TextBundle::from_section(
-                            "New Game",
-                            button_text_style.clone(),
-                        ));
-                    });
-
-                // settings button
-                parent
-                    .spawn((
-                        ButtonBundle {
-                            style: button_style.clone(),
-                            background_color: Color::GRAY.into(),
-                            ..default()
-                        },
-                        MenuButtonAction::Settings,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn(TextBundle::from_section(
-                            "Settings",
-                            button_text_style.clone(),
-                        ));
-                    });
-
-                // exit button
-                parent
-                    .spawn((
-                        ButtonBundle {
-                            style: button_style.clone(),
-                            background_color: Color::GRAY.into(),
-                            ..default()
-                        },
-                        MenuButtonAction::Quit,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn(TextBundle::from_section("Exit", button_text_style.clone()));
-                    });
+                for i in item_list {
+                    match i.item_type {
+                        MenuItemType::Title => {
+                            parent.spawn(
+                                TextBundle::from_section(
+                                    i.text,
+                                    TextStyle {
+                                        font_size: 80.0,
+                                        color: TEXT_COLOR,
+                                        ..default()
+                                    },
+                                )
+                                .with_style(Style {
+                                    margin: UiRect::all(Val::Px(50.0)),
+                                    ..default()
+                                }),
+                            );
+                        }
+                        MenuItemType::Button => {
+                            parent
+                                .spawn((
+                                    ButtonBundle {
+                                        style: button_style.clone(),
+                                        background_color: Color::GRAY.into(),
+                                        ..default()
+                                    },
+                                    i.actions[0], // a button must have a button action
+                                ))
+                                .with_children(|parent| {
+                                    parent.spawn(TextBundle::from_section(
+                                        i.text,
+                                        button_text_style.clone(),
+                                    ));
+                                });
+                        }
+                        MenuItemType::Value => {
+                            parent
+                                .spawn(NodeBundle {
+                                    // put value buttons in a row
+                                    style: Style {
+                                        flex_direction: FlexDirection::Row,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    ..default()
+                                })
+                                .with_children(|parent| {
+                                    // value name
+                                    parent.spawn(TextBundle::from_section(
+                                        i.text,
+                                        button_text_style.clone(),
+                                    ));
+                                    // value down button
+                                    parent
+                                        .spawn((
+                                            ButtonBundle {
+                                                style: slim_button_style.clone(),
+                                                background_color: Color::GRAY.into(),
+                                                ..default()
+                                            },
+                                            i.actions[0],
+                                        ))
+                                        .with_children(|parent| {
+                                            parent.spawn(TextBundle::from_section(
+                                                "<",
+                                                slim_button_text_style.clone(),
+                                            ));
+                                        });
+                                    // the value
+                                    parent.spawn((
+                                        TextBundle::from_section(
+                                            get_setting_value(
+                                                &game_settings,
+                                                i.value_type.unwrap(),
+                                            )
+                                            .to_string(),
+                                            button_text_style.clone(),
+                                        ),
+                                        GameSettingsType::Music,
+                                    ));
+                                    // value up button
+                                    parent
+                                        .spawn((
+                                            ButtonBundle {
+                                                style: slim_button_style.clone(),
+                                                background_color: Color::GRAY.into(),
+                                                ..default()
+                                            },
+                                            i.actions[1],
+                                        ))
+                                        .with_children(|parent| {
+                                            parent.spawn(TextBundle::from_section(
+                                                ">",
+                                                slim_button_text_style.clone(),
+                                            ));
+                                        });
+                                });
+                        }
+                    }
+                }
             });
     });
 }
 
-fn settings_menu_setup(mut cmds: Commands) {
-    info!("settings_menu_setup: begin");
-    let button_style = Style {
-        width: Val::Px(250.0),
-        height: Val::Px(65.0),
-        margin: UiRect::all(Val::Px(20.0)),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        ..default()
-    };
-    let button_text_style = TextStyle {
-        font_size: 40.0,
-        color: TEXT_COLOR,
-        ..default()
-    };
+fn main_menu_setup(cmds: Commands, game_settings: Res<GameSettings>) {
+    info!("main_menu_setup: begin");
 
-    cmds.spawn((
-        NodeBundle {
-            style: Style {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            background_color: Color::WHITE.into(),
-            ..default()
+    // item type, text, action(button only, None for non-buttons)
+    let item_list = vec![
+        MenuItem {
+            item_type: MenuItemType::Title,
+            text: "geowartry",
+            actions: vec![],
+            value_type: None,
         },
-        OnMenuSettingsScreen,
-    ))
-    .with_children(|parent| {
-        parent
-            .spawn(NodeBundle {
-                style: Style {
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                ..default()
-            })
-            .with_children(|parent| {
-                parent
-                    .spawn((
-                        ButtonBundle {
-                            style: button_style.clone(),
-                            background_color: NORMAL_BUTTON.into(),
-                            ..default()
-                        },
-                        MenuButtonAction::BackToMainMenu,
-                    ))
-                    .with_children(|parent| {
-                        parent.spawn(TextBundle::from_section("Back", button_text_style.clone()));
-                    });
-            });
-    });
+        MenuItem {
+            item_type: MenuItemType::Button,
+            text: "Play",
+            actions: vec![MenuButtonAction::Play],
+            value_type: None,
+        },
+        MenuItem {
+            item_type: MenuItemType::Button,
+            text: "Settings",
+            actions: vec![MenuButtonAction::ToSettings],
+            value_type: None,
+        },
+        MenuItem {
+            item_type: MenuItemType::Button,
+            text: "Quit",
+            actions: vec![MenuButtonAction::QuitGame],
+            value_type: None,
+        },
+    ];
+    setup_from_item_list(cmds, game_settings, OnMenuMainScreen, item_list);
+}
+
+fn settings_menu_setup(cmds: Commands, game_settings: Res<GameSettings>) {
+    info!("settings_menu_setup: begin");
+
+    let item_list = vec![
+        MenuItem {
+            item_type: MenuItemType::Value,
+            text: "Music",
+            actions: vec![MenuButtonAction::MusicDown, MenuButtonAction::MusicUp],
+            value_type: Some(GameSettingsType::Music),
+        },
+        MenuItem {
+            item_type: MenuItemType::Button,
+            text: "Back",
+            actions: vec![MenuButtonAction::BackToMainMenu],
+            value_type: None,
+        },
+    ];
+    setup_from_item_list(cmds, game_settings, OnMenuSettingsScreen, item_list);
 }
