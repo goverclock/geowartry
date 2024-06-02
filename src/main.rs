@@ -12,10 +12,10 @@ enum GameState {
     // Paused,  // TODO: implement PauseMenuPlugin
 }
 
-#[derive(Resource)]
+#[derive(Resource, Debug)]
 struct GameSettings {
-    music: usize, // volume of music, 0-10
-    sound: usize, // volumn of sound, 0-10
+    music: usize, // volume of music, 0-8
+    sound: usize, // volumn of sound, 0-8
 }
 
 #[derive(Component, Clone, Copy)]
@@ -32,8 +32,8 @@ impl Default for GameSettings {
 
 impl GameSettings {
     const DEFAULT: Self = Self { music: 2, sound: 2 };
-    const MUSIC_MAX: usize = 10;
-    const SOUND_MAX: usize = 10;
+    const MUSIC_MAX: usize = 8;
+    const SOUND_MAX: usize = 8;
 }
 
 fn main() {

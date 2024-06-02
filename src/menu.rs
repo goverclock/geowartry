@@ -39,7 +39,7 @@ enum MenuButtonAction {
 enum MenuItemType {
     Title,
     Button,
-    Value, // serve for settings
+    SettingValue,
 }
 
 pub struct MenuPlugin;
@@ -52,13 +52,16 @@ impl Plugin for MenuPlugin {
             .add_systems(OnExit(MenuState::Main), despawn_screen::<OnMenuMainScreen>)
             .add_systems(OnEnter(MenuState::Settings), settings_menu_setup)
             .add_systems(
+                Update,
+                refresh_setting_value.run_if(in_state(MenuState::Settings)),
+            )
+            .add_systems(
                 OnExit(MenuState::Settings),
                 despawn_screen::<OnMenuSettingsScreen>,
             )
             .add_systems(
                 Update,
-                (menu_action, button_colors, refresh_setting_value)
-                    .run_if(in_state(GameState::Menu)),
+                (menu_action, refresh_button_colors).run_if(in_state(GameState::Menu)),
             );
     }
 }
@@ -96,22 +99,30 @@ fn menu_action(
                 menu_state.set(MenuState::Main);
             }
             MenuButtonAction::MusicUp => {
-                game_settings.music += 1;
-                game_settings.music = game_settings.music.min(GameSettings::MUSIC_MAX);
-                info!("MusicUp: {}", game_settings.music);
+                if game_settings.music < GameSettings::MUSIC_MAX {
+                    game_settings.music += 1;
+                }
             }
             MenuButtonAction::MusicDown => {
                 if game_settings.music > 0 {
                     game_settings.music -= 1;
                 }
-                info!("MusicDown: {}", game_settings.music);
             }
-            _ => todo!(),
+            MenuButtonAction::SoundUp => {
+                if game_settings.sound < GameSettings::SOUND_MAX {
+                    game_settings.sound += 1;
+                }
+            }
+            MenuButtonAction::SoundDown => {
+                if game_settings.sound > 0 {
+                    game_settings.sound -= 1;
+                }
+            }
         }
     }
 }
 
-fn button_colors(
+fn refresh_button_colors(
     mut interaction_query: Query<
         (&Interaction, &mut BackgroundColor),
         (Changed<Interaction>, With<Button>),
@@ -262,7 +273,7 @@ fn setup_from_item_list(
                                     ));
                                 });
                         }
-                        MenuItemType::Value => {
+                        MenuItemType::SettingValue => {
                             parent
                                 .spawn(NodeBundle {
                                     // put value buttons in a row
@@ -305,7 +316,7 @@ fn setup_from_item_list(
                                             .to_string(),
                                             button_text_style.clone(),
                                         ),
-                                        GameSettingsType::Music,
+                                        i.value_type.unwrap(),
                                     ));
                                     // value up button
                                     parent
@@ -369,10 +380,16 @@ fn settings_menu_setup(cmds: Commands, game_settings: Res<GameSettings>) {
 
     let item_list = vec![
         MenuItem {
-            item_type: MenuItemType::Value,
+            item_type: MenuItemType::SettingValue,
             text: "Music",
             actions: vec![MenuButtonAction::MusicDown, MenuButtonAction::MusicUp],
             value_type: Some(GameSettingsType::Music),
+        },
+        MenuItem {
+            item_type: MenuItemType::SettingValue,
+            text: "Sound",
+            actions: vec![MenuButtonAction::SoundDown, MenuButtonAction::SoundUp],
+            value_type: Some(GameSettingsType::Sound),
         },
         MenuItem {
             item_type: MenuItemType::Button,

@@ -4,7 +4,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 
-use crate::GameState;
+use crate::{GameSettings, GameState};
 
 #[derive(Component)]
 struct Ball;
@@ -18,7 +18,10 @@ impl Plugin for GamePlugin {
         app.insert_resource(WorldCoords(Vec2 { x: 0., y: 0. }))
             .add_systems(OnEnter(GameState::InGame), setup)
             .add_systems(OnExit(GameState::InGame), cleanup)
-            .add_systems(Update, change_position.run_if(in_state(GameState::InGame)));
+            .add_systems(
+                Update,
+                (change_position, to_menu_on_return).run_if(in_state(GameState::InGame)),
+            );
     }
 }
 
@@ -26,8 +29,9 @@ fn setup(
     mut cmds: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    game_settings: Res<GameSettings>,
 ) {
-    info!("game: setup");
+    info!("game: setup with settings={:#?}", game_settings);
     let shape = Mesh2dHandle(meshes.add(Circle { radius: 30.0 }));
     let color = Color::hsl(360.0, 0.95, 0.7);
 
@@ -46,6 +50,15 @@ fn cleanup(mut cmds: Commands, query: Query<Entity, With<Ball>>) {
     info!("game: cleanup");
     for e in &query {
         cmds.entity(e).despawn();
+    }
+}
+
+fn to_menu_on_return(
+    mut game_state: ResMut<NextState<GameState>>,
+    input: Res<ButtonInput<KeyCode>>,
+) {
+    if input.just_pressed(KeyCode::Enter) {
+        game_state.set(GameState::Menu)
     }
 }
 
