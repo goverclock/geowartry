@@ -1,55 +1,118 @@
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
-    window::PrimaryWindow,
 };
 
 use crate::{GameSettings, GameState};
 
-#[derive(Component)]
-struct Ball;
-
-#[derive(Resource, Default)]
-struct WorldCoords(Vec2);
-
 pub struct GamePlugin;
+
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(WorldCoords(Vec2 { x: 0., y: 0. }))
+        app.init_resource::<Game>()
             .add_systems(OnEnter(GameState::InGame), setup)
             .add_systems(OnExit(GameState::InGame), cleanup)
             .add_systems(
                 Update,
-                (change_position, to_menu_on_return).run_if(in_state(GameState::InGame)),
+                (move_view, zoom_view, to_menu_on_return).run_if(in_state(GameState::InGame)),
             );
     }
 }
 
-fn setup(
-    mut cmds: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    game_settings: Res<GameSettings>,
-) {
-    info!("game: setup with settings={:#?}", game_settings);
-    let shape = Mesh2dHandle(meshes.add(Circle { radius: 30.0 }));
-    let color = Color::hsl(360.0, 0.95, 0.7);
+// TODO: not defined yet, using usize as dummy value
+struct Cell(usize);
 
-    cmds.spawn((
-        MaterialMesh2dBundle {
-            mesh: shape,
-            material: materials.add(color),
-            transform: Transform::from_xyz(0.0, 0.0, 0.0),
-            ..default()
-        },
-        Ball,
-    ));
+#[derive(Resource, Default)]
+struct Game {
+    board: Vec<Vec<Cell>>, // board[r][c]
 }
 
-fn cleanup(mut cmds: Commands, query: Query<Entity, With<Ball>>) {
-    info!("game: cleanup");
-    for e in &query {
-        cmds.entity(e).despawn();
+impl Game {
+    const BOARD_ROW: usize = 10;
+    const BOARD_COLUMN: usize = 15;
+    const CELL_SIZE: f32 = 30.0;
+}
+
+fn setup(
+    mut cmds: Commands,
+    mut game: ResMut<Game>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    game.board = (0..Game::BOARD_ROW)
+        .map(|r| {
+            (0..Game::BOARD_COLUMN)
+                .map(|c| {
+                    // draw a bigger outer square as boarder
+                    let shape_outer =
+                        Mesh2dHandle(meshes.add(Rectangle::new(Game::CELL_SIZE, Game::CELL_SIZE)));
+                    cmds.spawn(MaterialMesh2dBundle {
+                        mesh: shape_outer,
+                        material: materials.add(Color::AZURE),
+                        transform: Transform::from_xyz(
+                            c as f32 * Game::CELL_SIZE,
+                            r as f32 * Game::CELL_SIZE,
+                            0.0,
+                        ),
+                        ..default()
+                    });
+
+                    // draw a smaller inner square as fill
+                    let shape_inner = Mesh2dHandle(
+                        meshes.add(Rectangle::new(Game::CELL_SIZE - 1.0, Game::CELL_SIZE - 1.0)),
+                    );
+                    cmds.spawn(MaterialMesh2dBundle {
+                        mesh: shape_inner,
+                        material: materials.add(Color::GRAY),
+                        transform: Transform::from_xyz(
+                            c as f32 * Game::CELL_SIZE,
+                            r as f32 * Game::CELL_SIZE,
+                            1.0,
+                        ),
+                        ..default()
+                    });
+
+                    Cell(0)
+                })
+                .collect()
+        })
+        .collect();
+}
+
+fn cleanup() {}
+
+fn move_view(
+    mut query_camera: Query<&mut Transform, With<Camera>>,
+    input: Res<ButtonInput<KeyCode>>,
+) {
+    let mut camera_tf = query_camera.single_mut();
+    let mut d = Vec3::ZERO;
+    if input.pressed(KeyCode::KeyW) {
+        d.y += 3.0;
+    }
+    if input.pressed(KeyCode::KeyS) {
+        d.y -= 3.0;
+    }
+    if input.pressed(KeyCode::KeyA) {
+        d.x -= 3.0;
+    }
+    if input.pressed(KeyCode::KeyD) {
+        d.x += 3.0;
+    }
+    camera_tf.translation += d;
+}
+
+fn zoom_view(
+    mut query_camera: Query<&mut OrthographicProjection, With<Camera>>,
+    input: Res<ButtonInput<KeyCode>>,
+) {
+    let mut camera_proj = query_camera.single_mut();
+    if input.just_pressed(KeyCode::Equal) {
+        // +
+        camera_proj.scale /= 1.25;
+    }
+    if input.just_pressed(KeyCode::Minus) {
+        camera_proj.scale *= 1.25;
     }
 }
 
@@ -59,37 +122,5 @@ fn to_menu_on_return(
 ) {
     if input.just_pressed(KeyCode::Enter) {
         game_state.set(GameState::Menu)
-    }
-}
-
-fn change_position(
-    mut query: Query<&mut Transform, With<Ball>>,
-    mb: Res<ButtonInput<MouseButton>>,
-    mut cm: EventReader<CursorMoved>,
-
-    mut coords: ResMut<WorldCoords>,
-    w: Query<&Window, With<PrimaryWindow>>,
-    c: Query<(&Camera, &GlobalTransform)>,
-) {
-    // info!("game: change_position");
-    let (cam, cam_transform) = c.single();
-    let window = w.single();
-
-    if mb.just_pressed(MouseButton::Left) {
-        if let Some(world_position) = window
-            .cursor_position()
-            .and_then(|cursor| cam.viewport_to_world(cam_transform, cursor))
-            .map(|ray| ray.origin.truncate())
-        {
-            coords.0 = world_position;
-            info!("coords={}", world_position);
-        }
-        for e in cm.read() {
-            info!("click={}", e.position);
-            for mut transform in &mut query {
-                transform.translation.x = coords.0.x;
-                transform.translation.y = coords.0.y;
-            }
-        }
     }
 }
