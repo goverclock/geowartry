@@ -1,6 +1,5 @@
 use bevy::{
     prelude::*,
-    render::camera,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
     window::PrimaryWindow,
 };
@@ -12,6 +11,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Game>()
+            .insert_resource(SelectArea(None))
             .add_systems(OnEnter(GameState::InGame), setup)
             .add_systems(OnExit(GameState::InGame), cleanup)
             .add_systems(
@@ -22,19 +22,21 @@ impl Plugin for GamePlugin {
                     kb_move_view,
                     zoom_view,
                     to_menu_on_return,
+                    select_area,
                 )
                     .run_if(in_state(GameState::InGame)),
             );
     }
 }
 
-// TODO: not defined yet, using usize as dummy value
-struct Cell(usize);
+/// TODO: not defined yet, using usize as dummy value
+struct Cell(());
 
 #[derive(Resource, Default)]
 struct Game {
     board: Vec<Vec<Cell>>,          // board[r][c]
-    right_drag_start: Option<Vec2>, // start of a right mouse drag, None if not dragging
+    right_drag_start: Option<Vec2>, // window position of start of a right mouse drag, None if not dragging
+    left_drag_start: Option<Vec2>, // window position of start of a left mouse drag, None if not dragging
 }
 
 impl Game {
@@ -82,7 +84,7 @@ fn setup(
                         ..default()
                     });
 
-                    Cell(0)
+                    Cell(())
                 })
                 .collect()
         })
@@ -96,6 +98,7 @@ fn cleanup(mut query_camera: Query<(&mut Transform, &mut OrthographicProjection)
     camera_proj.scale = 1.0;
 }
 
+/// update mouse click status(stored in Game resource) based on mouse input
 fn mouse_button_input(
     buttons: Res<ButtonInput<MouseButton>>,
     mut game: ResMut<Game>,
@@ -103,14 +106,22 @@ fn mouse_button_input(
 ) {
     let window = window.single();
     if buttons.just_pressed(MouseButton::Right) {
-        info!("right clicked at {:?}", window.cursor_position());
+        info!("right clicked at window: {:?}", window.cursor_position());
         game.right_drag_start = window.cursor_position();
+    }
+    if buttons.just_pressed(MouseButton::Left) {
+        info!("left clicked at window: {:?}", window.cursor_position());
+        game.left_drag_start = window.cursor_position();
     }
     if !buttons.pressed(MouseButton::Right) {
         game.right_drag_start = None;
     }
+    if !buttons.pressed(MouseButton::Left) {
+        game.left_drag_start = None;
+    }
 }
 
+/// move view with right drag
 fn mouse_move_view(
     mut query_camera: Query<&mut Transform, With<Camera>>,
     mut cursor_moved_events: EventReader<CursorMoved>,
@@ -138,7 +149,7 @@ fn mouse_move_view(
     camera_tf.translation += d;
 }
 
-// move view with keyboard(WASD)
+/// move view with keyboard(WASD)
 fn kb_move_view(
     mut query_camera: Query<&mut Transform, With<Camera>>,
     input: Res<ButtonInput<KeyCode>>,
@@ -161,7 +172,8 @@ fn kb_move_view(
     camera_tf.translation += d;
 }
 
-// note: this function is for debug purpose only
+/// use = and - key to zoom in and out camera view
+/// ### Note: this function is for debug purpose only
 fn zoom_view(
     mut query_camera: Query<&mut OrthographicProjection, With<Camera>>,
     input: Res<ButtonInput<KeyCode>>,
@@ -176,6 +188,7 @@ fn zoom_view(
     }
 }
 
+/// return to menu when press return key
 fn to_menu_on_return(
     mut game_state: ResMut<NextState<GameState>>,
     input: Res<ButtonInput<KeyCode>>,
@@ -183,4 +196,85 @@ fn to_menu_on_return(
     if input.just_pressed(KeyCode::Enter) {
         game_state.set(GameState::Menu)
     }
+}
+
+#[derive(Resource)]
+struct SelectArea(Option<Entity>);
+
+/// spawn/despawn selected area in the world
+/// any selectable entities colliding with it will be selected
+fn select_area(
+    mut cmds: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut query_area: Query<(&mut Transform, &mut Mesh2dHandle)>,
+    camera_tf: Query<(&Camera, &GlobalTransform)>,
+    mut cursor_moved_events: EventReader<CursorMoved>,
+    mut select_area: ResMut<SelectArea>,
+    game: ResMut<Game>,
+) {
+    if let None = game.left_drag_start {
+        // not dragging select, despawn the rectangle area if exist
+        if let Some(area) = select_area.0 {
+            cmds.entity(area).despawn();
+            select_area.0 = None;
+            info!("despawned select area");
+        }
+        return;
+    }
+
+    // dragging
+    // spawn the rectangle area if not yet
+    let start = game.left_drag_start.unwrap();
+    let mut cur = start;
+    for e in cursor_moved_events.read() {
+        // TODO: this may conflict with mouse_move_view's .read()
+        cur = e.position;
+    }
+    if cur == start {
+        return;
+    }
+    let (cam, cam_tf) = camera_tf.single();
+    let start = window_to_world_coords(start, cam, cam_tf);
+    let cur = window_to_world_coords(cur, cam, cam_tf);
+    if start.is_none() || cur.is_none() {
+        info!("cursor position to world is None, not handled for selecting area");
+    }
+
+    let start_world_coord = start.unwrap();
+    let cur_world_coord = cur.unwrap();
+    let middle_world_coord = Vec2::new(
+        (cur_world_coord.x + start_world_coord.x) / 2.0,
+        (cur_world_coord.y + start_world_coord.y) / 2.0,
+    );
+    let area_length = (start_world_coord.x - cur_world_coord.x).abs();
+    let area_width = (start_world_coord.y - cur_world_coord.y).abs();
+    let shape = Mesh2dHandle(meshes.add(Rectangle::new(area_length, area_width)));
+
+    if let Some(area) = select_area.0 {
+        let (mut tf, mut mesh_handle) = query_area.get_mut(area).unwrap();
+        *tf = Transform::from_xyz(middle_world_coord.x, middle_world_coord.y, 2.0);
+        *mesh_handle = shape;
+        // info!("changed area to {} {}", start_world_coord, cur_world_coord);
+    } else {
+        let e = cmds
+            .spawn(MaterialMesh2dBundle {
+                mesh: shape,
+                material: materials.add(Color::rgba(0.0, 0.3, 0.0, 0.5)),
+                transform: Transform::from_xyz(start_world_coord.x, start_world_coord.y, 2.0),
+                ..default()
+            })
+            .id();
+        select_area.0 = Some(e);
+        info!("created area {} {}", start_world_coord, cur_world_coord);
+    }
+}
+
+fn window_to_world_coords(
+    window_pos: Vec2,
+    cam: &Camera,
+    cam_tf: &GlobalTransform,
+) -> Option<Vec2> {
+    cam.viewport_to_world(cam_tf, window_pos)
+        .map(|ray| ray.origin.truncate())
 }

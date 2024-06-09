@@ -14,7 +14,6 @@ bevy = { version = "0.13.0", features = [
     "png",
     "bevy_text",
 ] }
-bevy_quickmenu = { git = "https://github.com/terhechte/bevy_quickmenu.git", rev = "b30072318daa5c38c6a457a6f255145815c1a050" }
 
 [profile.dev]
 opt-level = 1
