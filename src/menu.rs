@@ -1,6 +1,7 @@
 use bevy::{app::AppExit, prelude::*};
-
-use crate::{GameSettings, GameSettingsType, GameState};
+mod settings;
+use super::GameState;
+use settings::*;
 
 #[derive(Default, Debug, States, Hash, Eq, PartialEq, Clone, Copy)]
 enum MenuState {
@@ -47,6 +48,7 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<MenuState>()
+            .insert_resource(GameSettings::default())
             .add_systems(OnEnter(GameState::Menu), setup)
             .add_systems(OnEnter(MenuState::Main), main_menu_setup)
             .add_systems(OnExit(MenuState::Main), despawn_screen::<OnMenuMainScreen>)

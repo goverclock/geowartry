@@ -1,10 +1,9 @@
+use crate::GameState;
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
     window::PrimaryWindow,
 };
-
-use crate::GameState;
 
 mod select_area;
 mod view_ctrl;
@@ -16,17 +15,11 @@ impl Plugin for GamePlugin {
         app.init_resource::<Game>()
             .add_systems(OnEnter(GameState::InGame), setup)
             .add_systems(OnExit(GameState::InGame), cleanup)
+            .add_plugins(view_ctrl::view_ctrl_plugin)
+            .add_plugins(select_area::select_area_plugin)
             .add_systems(
                 Update,
-                (
-                    mouse_button_input,
-                    to_menu_on_return,
-                    view_ctrl::mouse_move_view,
-                    view_ctrl::kb_move_view,
-                    view_ctrl::zoom_view,
-                    select_area::select_area,
-                )
-                    .run_if(in_state(GameState::InGame)),
+                (mouse_button_input, to_menu_on_return).run_if(in_state(GameState::InGame)),
             );
     }
 }

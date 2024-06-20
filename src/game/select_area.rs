@@ -5,12 +5,22 @@ use bevy::{
     window::PrimaryWindow,
 };
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone, Copy)]
 pub struct SelectArea {
     /// world coord of select area start
     start: Vec2,
     /// world coord of select area end
     end: Vec2,
+}
+
+#[derive(Event)]
+pub struct SelectAreaEvent(pub SelectArea);
+
+pub fn select_area_plugin(app: &mut App) {
+    app.add_event::<SelectAreaEvent>().add_systems(
+        Update,
+        (select_area,).run_if(in_state(super::GameState::InGame)),
+    );
 }
 
 // /// spawn/despawn selected area in the world
@@ -23,13 +33,15 @@ pub fn select_area(
     window: Query<&Window, With<PrimaryWindow>>,
     mut query_select_area: Query<(Entity, &mut Transform, &mut Mesh2dHandle, &mut SelectArea)>,
     game: ResMut<super::Game>,
+    mut ev_select_area: EventWriter<SelectAreaEvent>,
 ) {
     // not dragging select, despawn the rectangle area if exist
     if game.left_drag_start.is_none() {
         match query_select_area.get_single() {
             Ok((e, _, _, area)) => {
-                info!("selected area {:?} ", area);
+                ev_select_area.send(SelectAreaEvent(*area));
                 cmds.entity(e).despawn();
+                info!("select area({:?}) despawned", area);
             }
             Err(QuerySingleError::NoEntities(_)) => {}
             Err(QuerySingleError::MultipleEntities(_)) => {
