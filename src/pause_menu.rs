@@ -7,5 +7,3 @@ impl Plugin for PauseMenuPlugin {
         todo!()
     }
 }
-
-
