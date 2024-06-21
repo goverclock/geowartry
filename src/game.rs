@@ -4,7 +4,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 
-use crate::{diep_colors, layer, GameState};
+use crate::{layer, GameState};
 mod select_area;
 mod unit;
 mod view_ctrl;
@@ -18,6 +18,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<Game>()
             .add_systems(OnEnter(GameState::InGame), setup)
             .add_systems(OnExit(GameState::InGame), cleanup)
+            .add_plugins(unit::unit_plugin)
             .add_plugins(view_ctrl::view_ctrl_plugin)
             .add_plugins(select_area::select_area_plugin)
             .add_systems(
@@ -49,6 +50,7 @@ fn setup(
     mut game: ResMut<Game>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut ev_spawn_unit: EventWriter<SpawnUnitEvent>,
 ) {
     // initialize the board
     game.board = (0..Game::BOARD_ROW)
@@ -91,29 +93,13 @@ fn setup(
         .collect();
 
     // generate some units
-    let shape = Mesh2dHandle(meshes.add(Circle { radius: 30.0 }));
-    cmds.spawn(unit::UnitBundle {
-        marker: Unit,
-        hp: Health { max: 10, cur: 10 },
-        selectable: Selectable(false),
-        color_mesh: ColorMesh2dBundle {
-            mesh: shape.clone(),
-            material: materials.add(diep_colors::DIEP_BLUE),
-            transform: Transform::from_xyz(0.0, 0.0, Layer::Units.into_z_value()),
-            ..default()
-        },
+    ev_spawn_unit.send(SpawnUnitEvent {
+        unit_type: UnitType::Attacker,
+        coord: Vec2 { x: 0.0, y: 0.0 },
     });
-
-    cmds.spawn(unit::UnitBundle {
-        marker: Unit,
-        hp: Health { max: 10, cur: 10 },
-        selectable: Selectable(false),
-        color_mesh: ColorMesh2dBundle {
-            mesh: shape,
-            material: materials.add(diep_colors::DIEP_BLUE),
-            transform: Transform::from_xyz(100.0, 0.0, Layer::Units.into_z_value()),
-            ..default()
-        },
+    ev_spawn_unit.send(SpawnUnitEvent {
+        unit_type: UnitType::Attacker,
+        coord: Vec2 { x: 100.0, y: 100.0 },
     });
 }
 
