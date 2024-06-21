@@ -1,4 +1,4 @@
-use crate::GameState;
+use crate::{layer, GameState};
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
@@ -6,8 +6,10 @@ use bevy::{
 };
 
 mod select_area;
-mod view_ctrl;
 mod unit;
+mod view_ctrl;
+use layer::Layer;
+use unit::*;
 
 pub struct GamePlugin;
 
@@ -62,7 +64,7 @@ fn setup(
                         transform: Transform::from_xyz(
                             c as f32 * Game::CELL_SIZE,
                             r as f32 * Game::CELL_SIZE,
-                            0.0,
+                            Layer::GameMap.into_z_value(),
                         ),
                         ..default()
                     });
@@ -77,7 +79,7 @@ fn setup(
                         transform: Transform::from_xyz(
                             c as f32 * Game::CELL_SIZE,
                             r as f32 * Game::CELL_SIZE,
-                            1.0,
+                            Layer::GameMap.into_z_value() + 0.1,
                         ),
                         ..default()
                     });
@@ -87,6 +89,19 @@ fn setup(
                 .collect()
         })
         .collect();
+
+    // generate some units
+    let shape = Mesh2dHandle(meshes.add(Circle { radius: 50.0 }));
+    cmds.spawn(unit::UnitBundle {
+        hp: Health { max: 10, cur: 10 },
+        marker: Selectable(false),
+        color_mesh: ColorMesh2dBundle {
+            mesh: shape,
+            material: materials.add(Color::BLUE),
+            transform: Transform::from_xyz(0.0, 0.0, Layer::Units.into_z_value()),
+            ..default()
+        },
+    });
 }
 
 fn cleanup(mut query_camera: Query<(&mut Transform, &mut OrthographicProjection), With<Camera>>) {

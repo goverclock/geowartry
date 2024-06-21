@@ -83,7 +83,11 @@ pub fn select_area(
     // else spawn it
     match query_select_area.get_single_mut() {
         Ok((_, mut tf, mut mesh, mut area)) => {
-            *tf = Transform::from_xyz(middle_world_coord.x, middle_world_coord.y, 2.0);
+            *tf = Transform::from_xyz(
+                middle_world_coord.x,
+                middle_world_coord.y,
+                super::Layer::SelectArea.into_z_value(),
+            );
             *mesh = shape;
             area.start = start_world_coord;
             area.end = cur_world_coord;
