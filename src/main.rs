@@ -2,7 +2,6 @@ use bevy::prelude::*;
 
 mod game;
 mod menu;
-mod pause_menu;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Hash, States)]
 enum GameState {

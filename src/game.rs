@@ -7,6 +7,7 @@ use bevy::{
 
 mod select_area;
 mod view_ctrl;
+mod unit;
 
 pub struct GamePlugin;
 
