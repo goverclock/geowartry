@@ -5,8 +5,10 @@ use bevy::{
     window::PrimaryWindow,
 };
 
+use super::{Selectable, Unit};
+
 #[derive(Component, Debug, Clone, Copy)]
-pub struct SelectArea {
+struct SelectArea {
     /// world coord of select area start
     start: Vec2,
     /// world coord of select area end
@@ -14,18 +16,18 @@ pub struct SelectArea {
 }
 
 #[derive(Event)]
-pub struct SelectAreaEvent(pub SelectArea);
+struct SelectAreaEvent(SelectArea);
 
 pub fn select_area_plugin(app: &mut App) {
     app.add_event::<SelectAreaEvent>().add_systems(
         Update,
-        (select_area,).run_if(in_state(super::GameState::InGame)),
+        (select_area, select_units).run_if(in_state(super::GameState::InGame)),
     );
 }
 
-// /// spawn/despawn selected area in the world
-// /// any selectable entities colliding with it will be selected
-pub fn select_area(
+/// spawn/despawn selected area in the world
+/// any selectable entities colliding with it will be selected
+fn select_area(
     mut cmds: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -55,7 +57,7 @@ pub fn select_area(
     // get drag start and current window position
     let start = game.left_drag_start.unwrap();
     let cur = window.single().cursor_position();
-    if cur.is_none() {
+    if cur.is_none() || start == cur.unwrap() {
         return;
     }
     let cur = cur.unwrap();
@@ -93,10 +95,11 @@ pub fn select_area(
             area.end = cur_world_coord;
         }
         Err(QuerySingleError::NoEntities(_)) => {
+            static SELECT_AREA_COLOR: Color = Color::rgba(0.0, 0.3, 0.0, 0.5);
             cmds.spawn((
                 MaterialMesh2dBundle {
                     mesh: shape,
-                    material: materials.add(Color::rgba(0.0, 0.3, 0.0, 0.5)), // color of select area, semi transparent
+                    material: materials.add(SELECT_AREA_COLOR), // color of select area, semi transparent
                     ..default()
                 },
                 SelectArea {
@@ -108,6 +111,38 @@ pub fn select_area(
         }
         Err(QuerySingleError::MultipleEntities(_)) => {
             unreachable!("should only have at most one select area")
+        }
+    }
+}
+
+/// mark selectable units as selected if they are in select area
+fn select_units(
+    mut query_units: Query<(&mut Selectable, &Transform), With<Unit>>,
+    mut ev_select_area: EventReader<SelectAreaEvent>,
+) {
+    if ev_select_area.is_empty() {
+        return;
+    }
+
+    let area = ev_select_area.read().next().unwrap().0;
+    let select_up = area.start.y.max(area.end.y);
+    let select_down = area.start.y.min(area.end.y);
+    let select_left = area.start.x.min(area.end.x);
+    let select_right = area.start.x.max(area.end.x);
+    for (mut select, tf) in query_units.iter_mut() {
+        // info!("x={} y={}", tf.translation.x, tf.translation.y);
+        let unit_x = tf.translation.x;
+        let unit_y = tf.translation.y;
+        if unit_x <= select_right
+            && unit_x >= select_left
+            && unit_y <= select_up
+            && unit_y >= select_down
+        {
+            select.0 = true;
+            info!("selected unit at {:?}", tf.translation);
+        } else {
+            select.0 = false;
+            info!("unselected unit at {:?}", tf.translation);
         }
     }
 }

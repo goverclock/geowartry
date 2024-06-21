@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 
 mod game;
-mod menu;
 mod layer;
+mod menu;
+mod diep_colors;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Hash, States)]
 enum GameState {

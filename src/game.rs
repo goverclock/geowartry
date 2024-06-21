@@ -1,10 +1,10 @@
-use crate::{layer, GameState};
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
     window::PrimaryWindow,
 };
 
+use crate::{diep_colors, layer, GameState};
 mod select_area;
 mod unit;
 mod view_ctrl;
@@ -91,14 +91,27 @@ fn setup(
         .collect();
 
     // generate some units
-    let shape = Mesh2dHandle(meshes.add(Circle { radius: 50.0 }));
+    let shape = Mesh2dHandle(meshes.add(Circle { radius: 30.0 }));
     cmds.spawn(unit::UnitBundle {
+        marker: Unit,
         hp: Health { max: 10, cur: 10 },
-        marker: Selectable(false),
+        selectable: Selectable(false),
+        color_mesh: ColorMesh2dBundle {
+            mesh: shape.clone(),
+            material: materials.add(diep_colors::DIEP_BLUE),
+            transform: Transform::from_xyz(0.0, 0.0, Layer::Units.into_z_value()),
+            ..default()
+        },
+    });
+
+    cmds.spawn(unit::UnitBundle {
+        marker: Unit,
+        hp: Health { max: 10, cur: 10 },
+        selectable: Selectable(false),
         color_mesh: ColorMesh2dBundle {
             mesh: shape,
-            material: materials.add(Color::BLUE),
-            transform: Transform::from_xyz(0.0, 0.0, Layer::Units.into_z_value()),
+            material: materials.add(diep_colors::DIEP_BLUE),
+            transform: Transform::from_xyz(100.0, 0.0, Layer::Units.into_z_value()),
             ..default()
         },
     });

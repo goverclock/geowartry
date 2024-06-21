@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 
 #[derive(Component)]
+pub struct Unit;
+
+#[derive(Component)]
 pub struct Health {
     pub max: usize,
     pub cur: usize,
@@ -12,8 +15,9 @@ pub struct Selectable(pub bool);
 
 #[derive(Bundle)]
 pub struct UnitBundle {
+    pub marker: Unit,
     pub hp: Health,
     /// ColorMesh2dBundle already contains transform
     pub color_mesh: ColorMesh2dBundle,
-    pub marker: Selectable,
+    pub selectable: Selectable,
 }
