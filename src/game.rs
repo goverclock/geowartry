@@ -3,6 +3,10 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
     window::PrimaryWindow,
 };
+use bevy_rapier2d::{
+    plugin::{NoUserData, RapierConfiguration, RapierPhysicsPlugin},
+    render::RapierDebugRenderPlugin,
+};
 
 use crate::{layer, GameState};
 mod select_area;
@@ -18,9 +22,15 @@ impl Plugin for GamePlugin {
         app.init_resource::<Game>()
             .add_systems(OnEnter(GameState::InGame), setup)
             .add_systems(OnExit(GameState::InGame), cleanup)
-            .add_plugins(unit::unit_plugin)
-            .add_plugins(view_ctrl::view_ctrl_plugin)
-            .add_plugins(select_area::select_area_plugin)
+            .add_plugins((
+                RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
+                RapierDebugRenderPlugin::default(),
+            ))
+            .add_plugins((
+                unit::unit_plugin,
+                view_ctrl::view_ctrl_plugin,
+                select_area::select_area_plugin,
+            ))
             .add_systems(
                 Update,
                 (mouse_button_input, to_menu_on_return).run_if(in_state(GameState::InGame)),
@@ -48,10 +58,14 @@ impl Game {
 fn setup(
     mut cmds: Commands,
     mut game: ResMut<Game>,
+    mut rapier_config: ResMut<RapierConfiguration>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut ev_spawn_unit: EventWriter<SpawnUnitEvent>,
 ) {
+    // set gravity to zero
+    rapier_config.gravity = Vec2::ZERO;
+
     // initialize the board
     game.board = (0..Game::BOARD_ROW)
         .map(|r| {
@@ -66,7 +80,7 @@ fn setup(
                         transform: Transform::from_xyz(
                             c as f32 * Game::CELL_SIZE,
                             r as f32 * Game::CELL_SIZE,
-                            Layer::GameMap.into_z_value(),
+                            Layer::GameMap.into(),
                         ),
                         ..default()
                     });
@@ -75,13 +89,15 @@ fn setup(
                     let shape_inner = Mesh2dHandle(
                         meshes.add(Rectangle::new(Game::CELL_SIZE - 1.0, Game::CELL_SIZE - 1.0)),
                     );
+                    let mut inner_z: f32 = Layer::GameMap.into();
+                    inner_z += 0.1;
                     cmds.spawn(MaterialMesh2dBundle {
                         mesh: shape_inner,
                         material: materials.add(Color::GRAY),
                         transform: Transform::from_xyz(
                             c as f32 * Game::CELL_SIZE,
                             r as f32 * Game::CELL_SIZE,
-                            Layer::GameMap.into_z_value() + 0.1,
+                            inner_z,
                         ),
                         ..default()
                     });
@@ -92,6 +108,13 @@ fn setup(
         })
         .collect();
 
+    // TODO: spawning these random entities for debug purpose
+    // a ground for 2d physics engine test
+    // cmds.spawn((
+    //     Transform::from_xyz(1000.0, 300.0, Layer::Units.into()),
+    //     Collider::cuboid(100.0, 10.0),
+    // ));
+
     // generate some units
     ev_spawn_unit.send(SpawnUnitEvent {
         unit_type: UnitType::Attacker,
@@ -100,6 +123,10 @@ fn setup(
     ev_spawn_unit.send(SpawnUnitEvent {
         unit_type: UnitType::Attacker,
         coord: Vec2 { x: 100.0, y: 100.0 },
+    });
+    ev_spawn_unit.send(SpawnUnitEvent {
+        unit_type: UnitType::Miner,
+        coord: Vec2 { x: 101.0, y: 0.0 },
     });
 }
 

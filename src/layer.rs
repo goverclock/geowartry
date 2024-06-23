@@ -10,8 +10,10 @@ impl Layer {
     fn iter() -> core::array::IntoIter<Layer, 3> {
         [Layer::SelectArea, Layer::Units, Layer::GameMap].into_iter()
     }
+}
 
-    pub fn into_z_value(self) -> f32 {
+impl Into<f32> for Layer {
+    fn into(self) -> f32 {
         let it = Self::iter();
         let mut z = 100.0;
         for i in it {

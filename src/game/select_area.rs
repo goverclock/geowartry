@@ -88,7 +88,7 @@ fn select_area(
             *tf = Transform::from_xyz(
                 middle_world_coord.x,
                 middle_world_coord.y,
-                super::Layer::SelectArea.into_z_value(),
+                super::Layer::SelectArea.into(),
             );
             *mesh = shape;
             area.start = start_world_coord;
