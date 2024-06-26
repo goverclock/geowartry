@@ -33,7 +33,12 @@ fn select_area(
     mut materials: ResMut<Assets<ColorMaterial>>,
     camera_tf: Query<(&Camera, &GlobalTransform)>,
     window: Query<&Window, With<PrimaryWindow>>,
-    mut query_select_area: Query<(Entity, &mut Transform, &mut Mesh2dHandle, &mut SelectArea)>,
+    mut query_select_area: Query<(
+        Entity,
+        &mut Transform,
+        &mut Mesh2dHandle,
+        &mut SelectArea,
+    )>,
     game: ResMut<super::Game>,
     mut ev_select_area: EventWriter<SelectAreaEvent>,
 ) {
@@ -64,10 +69,12 @@ fn select_area(
 
     // turn drag start/end window position into world coords
     let (cam, cam_tf) = camera_tf.single();
-    let start = window_to_world_coords(start, cam, cam_tf);
-    let cur = window_to_world_coords(cur, cam, cam_tf);
+    let start = super::window_to_world_coords(start, cam, cam_tf);
+    let cur = super::window_to_world_coords(cur, cam, cam_tf);
     if start.is_none() || cur.is_none() {
-        info!("cursor position to world is None, not handled for selecting area");
+        info!(
+            "cursor position to world is None, not handled for selecting area"
+        );
     }
     let start_world_coord = start.unwrap();
     let cur_world_coord = cur.unwrap();
@@ -79,7 +86,8 @@ fn select_area(
     );
     let area_length = (start_world_coord.x - cur_world_coord.x).abs();
     let area_width = (start_world_coord.y - cur_world_coord.y).abs();
-    let shape = Mesh2dHandle(meshes.add(Rectangle::new(area_length, area_width)));
+    let shape =
+        Mesh2dHandle(meshes.add(Rectangle::new(area_length, area_width)));
 
     // update transform of the rect if it exists,
     // else spawn it
@@ -145,13 +153,4 @@ fn select_units(
             info!("unselected unit at {:?}", tf.translation);
         }
     }
-}
-
-fn window_to_world_coords(
-    window_pos: Vec2,
-    cam: &Camera,
-    cam_tf: &GlobalTransform,
-) -> Option<Vec2> {
-    cam.viewport_to_world(cam_tf, window_pos)
-        .map(|ray| ray.origin.truncate())
 }

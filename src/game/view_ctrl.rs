@@ -3,7 +3,8 @@ use bevy::prelude::*;
 pub fn view_ctrl_plugin(app: &mut App) {
     app.add_systems(
         Update,
-        (mouse_move_view, kb_move_view, zoom_view).run_if(in_state(super::GameState::InGame)),
+        (mouse_move_view, kb_move_view, zoom_view)
+            .run_if(in_state(super::GameState::InGame)),
     );
 }
 

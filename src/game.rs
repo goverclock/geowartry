@@ -11,6 +11,7 @@ use bevy_rapier2d::{
 use crate::{layer, GameState};
 mod select_area;
 mod unit;
+mod unit_move;
 mod view_ctrl;
 use layer::Layer;
 use unit::*;
@@ -28,12 +29,14 @@ impl Plugin for GamePlugin {
             ))
             .add_plugins((
                 unit::unit_plugin,
+                unit_move::unit_move_plugin,
                 view_ctrl::view_ctrl_plugin,
                 select_area::select_area_plugin,
             ))
             .add_systems(
                 Update,
-                (mouse_button_input, to_menu_on_return).run_if(in_state(GameState::InGame)),
+                (mouse_button_input, to_menu_on_return)
+                    .run_if(in_state(GameState::InGame)),
             );
     }
 }
@@ -73,7 +76,10 @@ fn setup(
                 .map(|c| {
                     // draw a bigger outer square as boarder
                     let shape_outer =
-                        Mesh2dHandle(meshes.add(Rectangle::new(Game::CELL_SIZE, Game::CELL_SIZE)));
+                        Mesh2dHandle(meshes.add(Rectangle::new(
+                            Game::CELL_SIZE,
+                            Game::CELL_SIZE,
+                        )));
                     cmds.spawn(MaterialMesh2dBundle {
                         mesh: shape_outer,
                         material: materials.add(Color::AZURE),
@@ -86,9 +92,10 @@ fn setup(
                     });
 
                     // draw a smaller inner square as fill
-                    let shape_inner = Mesh2dHandle(
-                        meshes.add(Rectangle::new(Game::CELL_SIZE - 1.0, Game::CELL_SIZE - 1.0)),
-                    );
+                    let shape_inner = Mesh2dHandle(meshes.add(Rectangle::new(
+                        Game::CELL_SIZE - 1.0,
+                        Game::CELL_SIZE - 1.0,
+                    )));
                     let mut inner_z: f32 = Layer::GameMap.into();
                     inner_z += 0.1;
                     cmds.spawn(MaterialMesh2dBundle {
@@ -132,14 +139,20 @@ fn setup(
     }
 }
 
-fn cleanup(mut query_camera: Query<(&mut Transform, &mut OrthographicProjection), With<Camera>>) {
+fn cleanup(
+    mut query_camera: Query<
+        (&mut Transform, &mut OrthographicProjection),
+        With<Camera>,
+    >,
+) {
     // reset camera transform and zoom
     let (mut camera_tf, mut camera_proj) = query_camera.single_mut();
     camera_tf.translation = Vec3::ZERO;
     camera_proj.scale = 1.0;
 }
 
-/// update mouse click status(stored in Game resource) based on mouse input
+/// update mouse click status(stored in Game resource) based on mouse input,
+/// majorly record the start of a left click or right click
 fn mouse_button_input(
     buttons: Res<ButtonInput<MouseButton>>,
     mut game: ResMut<Game>,
@@ -154,10 +167,11 @@ fn mouse_button_input(
         info!("left clicked at window: {:?}", window.cursor_position());
         game.left_drag_start = window.cursor_position();
     }
-    if !buttons.pressed(MouseButton::Right) {
+    // TODO: Game resource is responsible for recording last inplace left click
+    if buttons.just_released(MouseButton::Right) {
         game.right_drag_start = None;
     }
-    if !buttons.pressed(MouseButton::Left) {
+    if buttons.just_released(MouseButton::Left) {
         game.left_drag_start = None;
     }
 }
@@ -170,4 +184,31 @@ fn to_menu_on_return(
     if input.just_pressed(KeyCode::Enter) {
         game_state.set(GameState::Menu)
     }
+}
+
+/// convert cell coord(usize, usize) to transform's xy
+fn cell_to_transform(cell_coord: (usize, usize)) -> Vec2 {
+    Vec2 {
+        x: cell_coord.0 as f32 * Game::CELL_SIZE,
+        y: cell_coord.1 as f32 * Game::CELL_SIZE,
+    }
+}
+
+/// convert transform's xy to cell coord
+#[allow(unused)]
+fn transform_to_cell(tf_xy: Vec2) -> (usize, usize) {
+    (
+        (tf_xy.x / Game::CELL_SIZE) as usize,
+        (tf_xy.y / Game::CELL_SIZE) as usize,
+    )
+}
+
+/// convert window position to world coords, which then can be used as transform
+fn window_to_world_coords(
+    window_pos: Vec2,
+    cam: &Camera,
+    cam_tf: &GlobalTransform,
+) -> Option<Vec2> {
+    cam.viewport_to_world(cam_tf, window_pos)
+        .map(|ray| ray.origin.truncate())
 }

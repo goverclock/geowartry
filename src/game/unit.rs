@@ -3,9 +3,10 @@ use bevy_rapier2d::prelude::*;
 
 use crate::{diep_colors, layer};
 
-use super::Game;
+use super::cell_to_transform;
 
 const CIRCLE_RADIUS: f32 = super::Game::CELL_SIZE * 0.45;
+const SQUARE_HALF: f32 = super::Game::CELL_SIZE * 0.4;
 
 /// all units has this component
 #[derive(Component)]
@@ -18,8 +19,12 @@ pub struct Health {
 }
 
 /// a component to mark units that are selectable, the bool value represents if it's selected now
-#[derive(Component, Default)]
+#[derive(Component)]
 pub struct Selectable(pub bool);
+
+/// a serise of cell coords, serves as the path to final dest(the last coord in the vec)
+#[derive(Component)]
+pub struct PathDest(Vec<(usize, usize)>); // TODO: change this to (i64, i64)
 
 #[derive(Bundle)]
 struct Physics2dBundle {
@@ -49,7 +54,8 @@ pub enum UnitType {
     Miner,
 }
 
-/// unit module is implemented as plugin, to spawn a unit, just write a SpawnUnitEvent
+/// unit module is implemented as plugin, to spawn a unit, just write a
+/// SpawnUnitEvent
 #[derive(Event, Clone, Copy)]
 pub struct SpawnUnitEvent {
     pub unit_type: UnitType,
@@ -74,11 +80,17 @@ fn spawn_unit(
     let shape_circle = Mesh2dHandle(meshes.add(Circle {
         radius: CIRCLE_RADIUS,
     }));
+    let shape_square = Mesh2dHandle(meshes.add(Rectangle {
+        half_size: Vec2 {
+            x: SQUARE_HALF,
+            y: SQUARE_HALF,
+        },
+    }));
     let color_material_blue = materials.add(diep_colors::DIEP_BLUE);
     let color_material_yellow = materials.add(diep_colors::DIEP_YELLOW);
 
     for e in ev_spawn_unit.read() {
-        let tf_coord = cell_coord_to_transform(e.cell_coord);
+        let tf_coord = cell_to_transform(e.cell_coord);
         match e.unit_type {
             UnitType::Attacker => {
                 cmds.spawn((
@@ -115,7 +127,7 @@ fn spawn_unit(
                         hp: Health { max: 10, cur: 10 },
                         selectable: Selectable(false),
                         color_mesh: ColorMesh2dBundle {
-                            mesh: shape_circle.clone(),
+                            mesh: shape_square.clone(),
                             material: color_material_yellow.clone(),
                             transform: Transform::from_xyz(
                                 tf_coord.x,
@@ -126,7 +138,7 @@ fn spawn_unit(
                         },
                     },
                     Physics2dBundle {
-                        collider: Collider::ball(CIRCLE_RADIUS),
+                        collider: Collider::cuboid(SQUARE_HALF, SQUARE_HALF),
                         rigid_body: RigidBody::Dynamic,
                         velocity: Velocity::zero(),
                         collider_density: ColliderMassProperties::Density(0.0),
@@ -144,13 +156,6 @@ fn unit_debug(query_units: Query<(&Velocity, Option<&Damping>), With<Unit>>) {
     info!("unit_debug running");
     for u in query_units.iter() {
         info!("{:?}", u);
-    }
-}
-
-fn cell_coord_to_transform(cell_coord: (usize, usize)) -> Vec2 {
-    Vec2 {
-        x: cell_coord.0 as f32 * Game::CELL_SIZE,
-        y: cell_coord.1 as f32 * Game::CELL_SIZE,
     }
 }
 

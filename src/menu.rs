@@ -51,7 +51,10 @@ impl Plugin for MenuPlugin {
             .insert_resource(GameSettings::default())
             .add_systems(OnEnter(GameState::Menu), setup)
             .add_systems(OnEnter(MenuState::Main), main_menu_setup)
-            .add_systems(OnExit(MenuState::Main), despawn_screen::<OnMenuMainScreen>)
+            .add_systems(
+                OnExit(MenuState::Main),
+                despawn_screen::<OnMenuMainScreen>,
+            )
             .add_systems(OnEnter(MenuState::Settings), settings_menu_setup)
             .add_systems(
                 Update,
@@ -63,7 +66,8 @@ impl Plugin for MenuPlugin {
             )
             .add_systems(
                 Update,
-                (menu_action, refresh_button_colors).run_if(in_state(GameState::Menu)),
+                (menu_action, refresh_button_colors)
+                    .run_if(in_state(GameState::Menu)),
             );
     }
 }
@@ -154,7 +158,10 @@ fn refresh_setting_value(
     }
 }
 
-fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut cmds: Commands) {
+fn despawn_screen<T: Component>(
+    to_despawn: Query<Entity, With<T>>,
+    mut cmds: Commands,
+) {
     info!("despaw_screen: called");
     for e in &to_despawn {
         cmds.entity(e).despawn_recursive();
@@ -173,7 +180,10 @@ struct MenuItem<'a> {
     value_type: Option<GameSettingsType>,
 }
 
-fn get_setting_value(game_settings: &Res<GameSettings>, value_type: GameSettingsType) -> usize {
+fn get_setting_value(
+    game_settings: &Res<GameSettings>,
+    value_type: GameSettingsType,
+) -> usize {
     match value_type {
         GameSettingsType::Music => game_settings.music,
         GameSettingsType::Sound => game_settings.sound,
@@ -252,10 +262,12 @@ fn setup_from_item_list(
                                         ..default()
                                     },
                                 )
-                                .with_style(Style {
-                                    margin: UiRect::all(Val::Px(50.0)),
-                                    ..default()
-                                }),
+                                .with_style(
+                                    Style {
+                                        margin: UiRect::all(Val::Px(50.0)),
+                                        ..default()
+                                    },
+                                ),
                             );
                         }
                         MenuItemType::Button => {
@@ -296,17 +308,22 @@ fn setup_from_item_list(
                                     parent
                                         .spawn((
                                             ButtonBundle {
-                                                style: slim_button_style.clone(),
-                                                background_color: Color::GRAY.into(),
+                                                style: slim_button_style
+                                                    .clone(),
+                                                background_color: Color::GRAY
+                                                    .into(),
                                                 ..default()
                                             },
                                             i.actions[0],
                                         ))
                                         .with_children(|parent| {
-                                            parent.spawn(TextBundle::from_section(
-                                                "<",
-                                                slim_button_text_style.clone(),
-                                            ));
+                                            parent.spawn(
+                                                TextBundle::from_section(
+                                                    "<",
+                                                    slim_button_text_style
+                                                        .clone(),
+                                                ),
+                                            );
                                         });
                                     // the value
                                     parent.spawn((
@@ -324,17 +341,22 @@ fn setup_from_item_list(
                                     parent
                                         .spawn((
                                             ButtonBundle {
-                                                style: slim_button_style.clone(),
-                                                background_color: Color::GRAY.into(),
+                                                style: slim_button_style
+                                                    .clone(),
+                                                background_color: Color::GRAY
+                                                    .into(),
                                                 ..default()
                                             },
                                             i.actions[1],
                                         ))
                                         .with_children(|parent| {
-                                            parent.spawn(TextBundle::from_section(
-                                                ">",
-                                                slim_button_text_style.clone(),
-                                            ));
+                                            parent.spawn(
+                                                TextBundle::from_section(
+                                                    ">",
+                                                    slim_button_text_style
+                                                        .clone(),
+                                                ),
+                                            );
                                         });
                                 });
                         }
@@ -384,13 +406,19 @@ fn settings_menu_setup(cmds: Commands, game_settings: Res<GameSettings>) {
         MenuItem {
             item_type: MenuItemType::SettingValue,
             text: "Music",
-            actions: vec![MenuButtonAction::MusicDown, MenuButtonAction::MusicUp],
+            actions: vec![
+                MenuButtonAction::MusicDown,
+                MenuButtonAction::MusicUp,
+            ],
             value_type: Some(GameSettingsType::Music),
         },
         MenuItem {
             item_type: MenuItemType::SettingValue,
             text: "Sound",
-            actions: vec![MenuButtonAction::SoundDown, MenuButtonAction::SoundUp],
+            actions: vec![
+                MenuButtonAction::SoundDown,
+                MenuButtonAction::SoundUp,
+            ],
             value_type: Some(GameSettingsType::Sound),
         },
         MenuItem {
