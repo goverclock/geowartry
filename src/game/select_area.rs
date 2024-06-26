@@ -140,7 +140,7 @@ fn select_units(
         {
             select.0 = true;
             info!("selected unit at {:?}", tf.translation);
-        } else {
+        } else if select.0 {
             select.0 = false;
             info!("unselected unit at {:?}", tf.translation);
         }

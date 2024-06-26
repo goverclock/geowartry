@@ -52,7 +52,7 @@ struct Game {
 impl Game {
     const BOARD_ROW: usize = 10;
     const BOARD_COLUMN: usize = 15;
-    const CELL_SIZE: f32 = 30.0;
+    const CELL_SIZE: f32 = 40.0;
 }
 
 fn setup(
@@ -109,25 +109,27 @@ fn setup(
         .collect();
 
     // TODO: spawning these random entities for debug purpose
-    // a ground for 2d physics engine test
-    // cmds.spawn((
-    //     Transform::from_xyz(1000.0, 300.0, Layer::Units.into()),
-    //     Collider::cuboid(100.0, 10.0),
-    // ));
-
     // generate some units
-    ev_spawn_unit.send(SpawnUnitEvent {
-        unit_type: UnitType::Attacker,
-        coord: Vec2 { x: 0.0, y: 0.0 },
-    });
-    ev_spawn_unit.send(SpawnUnitEvent {
-        unit_type: UnitType::Attacker,
-        coord: Vec2 { x: 100.0, y: 100.0 },
-    });
+    // ev_spawn_unit.send(SpawnUnitEvent {
+    //     unit_type: UnitType::Attacker,
+    //     cell_coord: (0, 0),
+    // });
+    // ev_spawn_unit.send(SpawnUnitEvent {
+    //     unit_type: UnitType::Attacker,
+    //     cell_coord: (10, 10),
+    // });
     ev_spawn_unit.send(SpawnUnitEvent {
         unit_type: UnitType::Miner,
-        coord: Vec2 { x: 101.0, y: 0.0 },
+        cell_coord: (10, 0),
     });
+    for i in 0..5 {
+        for j in 0..7 {
+            ev_spawn_unit.send(SpawnUnitEvent {
+                unit_type: UnitType::Attacker,
+                cell_coord: (i, j),
+            });
+        }
+    }
 }
 
 fn cleanup(mut query_camera: Query<(&mut Transform, &mut OrthographicProjection), With<Camera>>) {

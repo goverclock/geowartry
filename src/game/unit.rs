@@ -3,6 +3,10 @@ use bevy_rapier2d::prelude::*;
 
 use crate::{diep_colors, layer};
 
+use super::Game;
+
+const CIRCLE_RADIUS: f32 = super::Game::CELL_SIZE * 0.45;
+
 /// all units has this component
 #[derive(Component)]
 pub struct Unit;
@@ -18,13 +22,7 @@ pub struct Health {
 pub struct Selectable(pub bool);
 
 #[derive(Bundle)]
-pub struct UnitBundle {
-    marker: Unit,
-    hp: Health,
-    /// ColorMesh2dBundle already contains transform
-    color_mesh: ColorMesh2dBundle,
-    selectable: Selectable,
-    // physics relevant
+struct Physics2dBundle {
     collider: Collider,
     rigid_body: RigidBody,
     velocity: Velocity,
@@ -33,6 +31,16 @@ pub struct UnitBundle {
     /// actual mass of this unit
     mass: AdditionalMassProperties,
     sleep: Sleeping,
+}
+
+/// this doesn't include physics, add Physics2dbundle for that
+#[derive(Bundle)]
+pub struct UnitBundle {
+    marker: Unit,
+    hp: Health,
+    /// ColorMesh2dBundle already contains transform
+    color_mesh: ColorMesh2dBundle,
+    selectable: Selectable,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,7 +53,8 @@ pub enum UnitType {
 #[derive(Event, Clone, Copy)]
 pub struct SpawnUnitEvent {
     pub unit_type: UnitType,
-    pub coord: Vec2,
+    /// the coord in the Cell, not the transform
+    pub cell_coord: (usize, usize),
 }
 pub fn unit_plugin(app: &mut App) {
     app.add_event::<SpawnUnitEvent>()
@@ -53,11 +62,7 @@ pub fn unit_plugin(app: &mut App) {
             Update,
             spawn_unit.run_if(in_state(super::GameState::InGame)),
         )
-        .add_systems(OnExit(super::GameState::InGame), cleanup)
-        .add_systems(
-            Update,
-            unit_debug.run_if(in_state(super::GameState::InGame)),
-        );
+        .add_systems(OnExit(super::GameState::InGame), cleanup);
 }
 
 fn spawn_unit(
@@ -66,66 +71,86 @@ fn spawn_unit(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let shape_circle = Mesh2dHandle(meshes.add(Circle { radius: 30.0 }));
+    let shape_circle = Mesh2dHandle(meshes.add(Circle {
+        radius: CIRCLE_RADIUS,
+    }));
     let color_material_blue = materials.add(diep_colors::DIEP_BLUE);
     let color_material_yellow = materials.add(diep_colors::DIEP_YELLOW);
 
     for e in ev_spawn_unit.read() {
+        let tf_coord = cell_coord_to_transform(e.cell_coord);
         match e.unit_type {
             UnitType::Attacker => {
-                cmds.spawn((UnitBundle {
-                    marker: Unit,
-                    hp: Health { max: 10, cur: 10 },
-                    selectable: Selectable(false),
-                    color_mesh: ColorMesh2dBundle {
-                        mesh: shape_circle.clone(),
-                        material: color_material_blue.clone(),
-                        transform: Transform::from_xyz(
-                            e.coord.x,
-                            e.coord.y,
-                            layer::Layer::Units.into(),
-                        ),
-                        ..default()
+                cmds.spawn((
+                    UnitBundle {
+                        marker: Unit,
+                        hp: Health { max: 10, cur: 10 },
+                        selectable: Selectable(false),
+                        color_mesh: ColorMesh2dBundle {
+                            mesh: shape_circle.clone(),
+                            material: color_material_blue.clone(),
+                            transform: Transform::from_xyz(
+                                tf_coord.x,
+                                tf_coord.y,
+                                layer::Layer::Units.into(),
+                            ),
+                            ..default()
+                        },
                     },
-                    collider: Collider::ball(30.0),
-                    rigid_body: RigidBody::Dynamic,
-                    velocity: Velocity::linear(Vec2 { x: 10.0, y: 20.0 }),
-                    collider_density: ColliderMassProperties::Density(0.0),
-                    mass: AdditionalMassProperties::Mass(1.0),
-                    sleep: Sleeping::disabled(),
-                },));
+                    Physics2dBundle {
+                        collider: Collider::ball(CIRCLE_RADIUS),
+                        rigid_body: RigidBody::Dynamic,
+                        // velocity: Velocity::linear(Vec2 { x: 10.0, y: 20.0 }),
+                        velocity: Velocity::zero(),
+                        collider_density: ColliderMassProperties::Density(0.0),
+                        mass: AdditionalMassProperties::Mass(1.0),
+                        sleep: Sleeping::disabled(),
+                    },
+                ));
             }
             UnitType::Miner => {
-                cmds.spawn((UnitBundle {
-                    marker: Unit,
-                    hp: Health { max: 10, cur: 10 },
-                    selectable: Selectable(false),
-                    color_mesh: ColorMesh2dBundle {
-                        mesh: shape_circle.clone(),
-                        material: color_material_yellow.clone(),
-                        transform: Transform::from_xyz(
-                            e.coord.x,
-                            e.coord.y,
-                            layer::Layer::Units.into(),
-                        ),
-                        ..default()
+                cmds.spawn((
+                    UnitBundle {
+                        marker: Unit,
+                        hp: Health { max: 10, cur: 10 },
+                        selectable: Selectable(false),
+                        color_mesh: ColorMesh2dBundle {
+                            mesh: shape_circle.clone(),
+                            material: color_material_yellow.clone(),
+                            transform: Transform::from_xyz(
+                                tf_coord.x,
+                                tf_coord.y,
+                                layer::Layer::Units.into(),
+                            ),
+                            ..default()
+                        },
                     },
-                    collider: Collider::ball(30.0),
-                    rigid_body: RigidBody::Fixed,
-                    velocity: Velocity::zero(),
-                    collider_density: ColliderMassProperties::Density(0.0),
-                    mass: AdditionalMassProperties::Mass(1.0),
-                    sleep: Sleeping::disabled(),
-                },));
+                    Physics2dBundle {
+                        collider: Collider::ball(CIRCLE_RADIUS),
+                        rigid_body: RigidBody::Dynamic,
+                        velocity: Velocity::zero(),
+                        collider_density: ColliderMassProperties::Density(0.0),
+                        mass: AdditionalMassProperties::Mass(1.0),
+                        sleep: Sleeping::disabled(),
+                    },
+                ));
             }
         }
     }
 }
 
+#[allow(unused)]
 fn unit_debug(query_units: Query<(&Velocity, Option<&Damping>), With<Unit>>) {
     info!("unit_debug running");
     for u in query_units.iter() {
         info!("{:?}", u);
+    }
+}
+
+fn cell_coord_to_transform(cell_coord: (usize, usize)) -> Vec2 {
+    Vec2 {
+        x: cell_coord.0 as f32 * Game::CELL_SIZE,
+        y: cell_coord.1 as f32 * Game::CELL_SIZE,
     }
 }
 
