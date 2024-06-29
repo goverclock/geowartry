@@ -1,7 +1,31 @@
-use bevy::{prelude::*, window::PrimaryWindow};
+use bevy::{
+    ecs::query::QuerySingleError,
+    prelude::*,
+    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+    window::PrimaryWindow,
+};
 use bevy_rapier2d::{pipeline::QueryFilter, plugin::RapierContext};
 
-use crate::game::window_to_world_coords;
+/// when user in-place left clicked on a unit, select it and unselecte others
+#[derive(Event, Debug)]
+pub struct SelectSingleUnitEvent(pub Entity);
+
+/// when user in-place left clicked on a cell, order all selected units to move
+/// there, contains cell coords(col, row)
+#[derive(Event, Debug)]
+struct SetUnitDestEvent((i64, i64));
+
+#[derive(Event)]
+pub struct SelectAreaUnitsEvent(pub SelectArea);
+
+/// the visible rectangle area entity
+#[derive(Component, Debug, Clone, Copy)]
+pub struct SelectArea {
+    /// world coord of select area start
+    pub start: Vec2,
+    /// world coord of select area end
+    pub end: Vec2,
+}
 
 #[derive(Resource, Default)]
 pub struct MouseStatus {
@@ -11,26 +35,18 @@ pub struct MouseStatus {
     pub left_drag_start: Option<Vec2>,
 }
 
-/// when user in-place left clicked on a unit, select it and unselecte others
-#[derive(Event, Debug)]
-struct SelectSingleUnitEvent(Entity);
-
-/// when user in-place left clicked on a cell, order all selected units to move
-/// there, contains cell coords(col, row)
-#[derive(Event, Debug)]
-struct SetUnitDestEvent((i64, i64));
-
 /// this plugin is responsible for generating events that **actually** influence
 /// the game(e.g. command to move all selected units, rather than moving the
 /// view) based on user inputs
-/// TODO: the only exception is select_area, which can also be integrated here
 pub fn input_event_plugin(app: &mut App) {
     app.init_resource::<MouseStatus>()
+        .add_event::<SelectAreaUnitsEvent>()
         .add_event::<SelectSingleUnitEvent>()
         .add_event::<SetUnitDestEvent>()
         .add_systems(
             Update,
-            mouse_button_input.run_if(in_state(super::GlobalState::InGame)),
+            (mouse_button_input, select_area)
+                .run_if(in_state(super::GlobalState::InGame)),
         );
 }
 
@@ -69,7 +85,7 @@ fn mouse_button_input(
             );
 
             // check if the click is on a unit
-            let point = window_to_world_coords(
+            let point = super::window_to_world_coords(
                 window.cursor_position().unwrap(),
                 &camera_tf,
             )
@@ -97,5 +113,102 @@ fn mouse_button_input(
             }
         }
         mouse_status.left_drag_start = None;
+    }
+}
+
+/// spawn/despawn selected area in the world
+/// any selectable entities colliding with it will be selected
+fn select_area(
+    mut cmds: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    camera_tf: Query<(&Camera, &GlobalTransform)>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    mut query_select_area: Query<(
+        Entity,
+        &mut Transform,
+        &mut Mesh2dHandle,
+        &mut SelectArea,
+    )>,
+    mouse_status: ResMut<MouseStatus>,
+    mut ev_select_area: EventWriter<SelectAreaUnitsEvent>,
+) {
+    // not dragging select, despawn the rectangle area if exist
+    if mouse_status.left_drag_start.is_none() {
+        match query_select_area.get_single() {
+            Ok((e, _, _, area)) => {
+                ev_select_area.send(SelectAreaUnitsEvent(*area));
+                cmds.entity(e).despawn();
+                info!("select area({:?}) despawned", area);
+            }
+            Err(QuerySingleError::NoEntities(_)) => {}
+            Err(QuerySingleError::MultipleEntities(_)) => {
+                unreachable!("should only have at most one select area")
+            }
+        }
+        return;
+    }
+
+    // dragging
+    // get drag start and current window position
+    let start = mouse_status.left_drag_start.unwrap();
+    let cur = window.single().cursor_position();
+    if cur.is_none() || start == cur.unwrap() {
+        return;
+    }
+    let cur = cur.unwrap();
+
+    // turn drag start/end window position into world coords
+    let start = super::window_to_world_coords(start, &camera_tf);
+    let cur = super::window_to_world_coords(cur, &camera_tf);
+    if start.is_none() || cur.is_none() {
+        info!(
+            "cursor position to world is None, not handled for selecting area"
+        );
+    }
+    let start_world_coord = start.unwrap();
+    let cur_world_coord = cur.unwrap();
+
+    // the transform of a rect is the center of it
+    let middle_world_coord = Vec2::new(
+        (cur_world_coord.x + start_world_coord.x) / 2.0,
+        (cur_world_coord.y + start_world_coord.y) / 2.0,
+    );
+    let area_length = (start_world_coord.x - cur_world_coord.x).abs();
+    let area_width = (start_world_coord.y - cur_world_coord.y).abs();
+    let shape =
+        Mesh2dHandle(meshes.add(Rectangle::new(area_length, area_width)));
+
+    // update transform of the rect if it exists,
+    // else spawn it
+    match query_select_area.get_single_mut() {
+        Ok((_, mut tf, mut mesh, mut area)) => {
+            *tf = Transform::from_xyz(
+                middle_world_coord.x,
+                middle_world_coord.y,
+                super::Layer::SelectArea.into(),
+            );
+            *mesh = shape;
+            area.start = start_world_coord;
+            area.end = cur_world_coord;
+        }
+        Err(QuerySingleError::NoEntities(_)) => {
+            static SELECT_AREA_COLOR: Color = Color::rgba(0.0, 0.3, 0.0, 0.5);
+            cmds.spawn((
+                MaterialMesh2dBundle {
+                    mesh: shape,
+                    material: materials.add(SELECT_AREA_COLOR), // color of select area, semi transparent
+                    ..default()
+                },
+                SelectArea {
+                    start: start_world_coord,
+                    end: cur_world_coord,
+                },
+            ));
+            info!("select area spawned");
+        }
+        Err(QuerySingleError::MultipleEntities(_)) => {
+            unreachable!("should only have at most one select area")
+        }
     }
 }

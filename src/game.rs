@@ -9,7 +9,7 @@ use bevy_rapier2d::{
 
 use crate::{layer, GlobalState};
 mod input_event;
-mod select_area;
+mod select_unit;
 mod unit;
 mod unit_move;
 mod view_ctrl;
@@ -31,7 +31,7 @@ impl Plugin for GamePlugin {
                 unit::unit_plugin,
                 unit_move::unit_move_plugin,
                 view_ctrl::view_ctrl_plugin,
-                select_area::select_area_plugin,
+                select_unit::select_unit_plugin,
                 input_event::input_event_plugin,
             ))
             .add_systems(
@@ -166,14 +166,13 @@ fn cell_to_transform(cell_coord: (usize, usize)) -> Vec2 {
 }
 
 /// convert world transform's xy to cell coord
-#[allow(unused)]
 fn transform_to_cell(tf_xy: Vec2) -> (i64, i64) {
-    let mut x = if tf_xy.x > 0.0 {
+    let x = if tf_xy.x > 0.0 {
         tf_xy.x + Game::CELL_SIZE * 0.5
     } else {
         tf_xy.x - Game::CELL_SIZE * 0.5
     };
-    let mut y = if tf_xy.y > 0.0 {
+    let y = if tf_xy.y > 0.0 {
         tf_xy.y + Game::CELL_SIZE * 0.5
     } else {
         tf_xy.y - Game::CELL_SIZE * 0.5

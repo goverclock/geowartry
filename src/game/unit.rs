@@ -3,8 +3,6 @@ use bevy_rapier2d::prelude::*;
 
 use crate::{diep_colors, layer};
 
-use super::cell_to_transform;
-
 const CIRCLE_RADIUS: f32 = super::Game::CELL_SIZE * 0.45;
 const SQUARE_HALF: f32 = super::Game::CELL_SIZE * 0.4;
 
@@ -62,6 +60,10 @@ pub struct SpawnUnitEvent {
     /// the coord in the Cell, not the transform
     pub cell_coord: (usize, usize),
 }
+
+/// this plugin provides interface to spawn new units(the [`SpawnUnitEvent`]),
+/// it also do some clear up work on exit [`super::GlobalState::InGame`] by
+/// despawning all units
 pub fn unit_plugin(app: &mut App) {
     app.add_event::<SpawnUnitEvent>()
         .add_systems(
@@ -90,7 +92,7 @@ fn spawn_unit(
     let color_material_yellow = materials.add(diep_colors::DIEP_YELLOW);
 
     for e in ev_spawn_unit.read() {
-        let tf_coord = cell_to_transform(e.cell_coord);
+        let tf_coord = super::cell_to_transform(e.cell_coord);
         match e.unit_type {
             UnitType::Attacker => {
                 cmds.spawn((
