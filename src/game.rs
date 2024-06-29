@@ -157,7 +157,7 @@ fn to_menu_on_return(
     }
 }
 
-/// convert cell coord(usize, usize) to transform's xy
+/// convert cell coord(usize, usize) to world transform's xy
 fn cell_to_transform(cell_coord: (usize, usize)) -> Vec2 {
     Vec2 {
         x: cell_coord.0 as f32 * Game::CELL_SIZE,
@@ -165,13 +165,20 @@ fn cell_to_transform(cell_coord: (usize, usize)) -> Vec2 {
     }
 }
 
-/// convert transform's xy to cell coord
+/// convert world transform's xy to cell coord
 #[allow(unused)]
-fn transform_to_cell(tf_xy: Vec2) -> (usize, usize) {
-    (
-        (tf_xy.x / Game::CELL_SIZE) as usize,
-        (tf_xy.y / Game::CELL_SIZE) as usize,
-    )
+fn transform_to_cell(tf_xy: Vec2) -> (i64, i64) {
+    let mut x = if tf_xy.x > 0.0 {
+        tf_xy.x + Game::CELL_SIZE * 0.5
+    } else {
+        tf_xy.x - Game::CELL_SIZE * 0.5
+    };
+    let mut y = if tf_xy.y > 0.0 {
+        tf_xy.y + Game::CELL_SIZE * 0.5
+    } else {
+        tf_xy.y - Game::CELL_SIZE * 0.5
+    };
+    ((x / Game::CELL_SIZE) as i64, (y / Game::CELL_SIZE) as i64)
 }
 
 /// convert window position to world coords, which then can be used as transform

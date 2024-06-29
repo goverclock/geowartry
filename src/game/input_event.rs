@@ -11,32 +11,36 @@ pub struct MouseStatus {
     pub left_drag_start: Option<Vec2>,
 }
 
+/// when user in-place left clicked on a unit, select it and unselecte others
+#[derive(Event, Debug)]
+struct SelectSingleUnitEvent(Entity);
+
+/// when user in-place left clicked on a cell, order all selected units to move
+/// there, contains cell coords(col, row)
+#[derive(Event, Debug)]
+struct SetUnitDestEvent((i64, i64));
+
 /// this plugin is responsible for generating events that **actually** influence
 /// the game(e.g. command to move all selected units, rather than moving the
 /// view) based on user inputs
 /// TODO: the only exception is select_area, which can also be integrated here
 pub fn input_event_plugin(app: &mut App) {
     app.init_resource::<MouseStatus>()
-        .add_event::<SelectSingleEvent>()
+        .add_event::<SelectSingleUnitEvent>()
+        .add_event::<SetUnitDestEvent>()
         .add_systems(
             Update,
             mouse_button_input.run_if(in_state(super::GlobalState::InGame)),
         );
 }
 
-/// when user in-place left clicked on a unit, select it and unselecte others
-#[derive(Event)]
-struct SelectSingleEvent(Entity);
-
-#[derive(Event)]
-struct SetDestEvent((i64, i64));
-
 /// update mouse click status(stored in Game resource) based on mouse input,
 /// send game commands based on them
 fn mouse_button_input(
     buttons: Res<ButtonInput<MouseButton>>,
     mut mouse_status: ResMut<MouseStatus>,
-    mut ev_select_single: EventWriter<SelectSingleEvent>,
+    mut ev_select_single_unit: EventWriter<SelectSingleUnitEvent>,
+    mut ev_set_unit_dest: EventWriter<SetUnitDestEvent>,
     window: Query<&Window, With<PrimaryWindow>>,
     camera_tf: Query<(&Camera, &GlobalTransform)>,
     rapier_context: Res<RapierContext>,
@@ -63,19 +67,34 @@ fn mouse_button_input(
                 "in-place left clicked at window: {:?}",
                 window.cursor_position()
             );
+
+            // check if the click is on a unit
             let point = window_to_world_coords(
                 window.cursor_position().unwrap(),
                 &camera_tf,
-            );
+            )
+            .unwrap();
+            let mut on_unit = false;
             rapier_context.intersections_with_point(
-                point.unwrap(),
+                point,
                 QueryFilter::default(),
-                |x| {
-                    info!("sending SelectSinglgEvent({:?})", x);
-                    ev_select_single.send(SelectSingleEvent(x));
+                |e| {
+                    info!(
+                        "sending SelectSinglgEvent({:?})",
+                        SelectSingleUnitEvent(e)
+                    );
+                    ev_select_single_unit.send(SelectSingleUnitEvent(e));
+                    on_unit = true;
                     false
                 },
             );
+
+            // clicked on a cell
+            if !on_unit {
+                let cell_coord = super::transform_to_cell(point);
+                info!("sending {:?}", SetUnitDestEvent(cell_coord));
+                ev_set_unit_dest.send(SetUnitDestEvent(cell_coord));
+            }
         }
         mouse_status.left_drag_start = None;
     }
