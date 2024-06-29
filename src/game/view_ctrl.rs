@@ -1,10 +1,12 @@
 use bevy::prelude::*;
 
+use super::input_event::MouseStatus;
+
 pub fn view_ctrl_plugin(app: &mut App) {
     app.add_systems(
         Update,
         (mouse_move_view, kb_move_view, zoom_view)
-            .run_if(in_state(super::GameState::InGame)),
+            .run_if(in_state(super::GlobalState::InGame)),
     );
 }
 
@@ -12,14 +14,14 @@ pub fn view_ctrl_plugin(app: &mut App) {
 pub fn mouse_move_view(
     mut query_camera: Query<&mut Transform, With<Camera>>,
     mut cursor_moved_events: EventReader<CursorMoved>,
-    game: Res<super::Game>,
+    mouse_status: Res<MouseStatus>,
 ) {
     let mut camera_tf = query_camera.single_mut();
     let mut d = Vec3::ZERO;
     let mut move_speed_x = 0.0;
     let mut move_speed_y = 0.0;
 
-    if let Some(start) = game.right_drag_start {
+    if let Some(start) = mouse_status.right_drag_start {
         for e in cursor_moved_events.read() {
             let cur = e.position;
             move_speed_x = (cur.x - start.x) / 10.0;

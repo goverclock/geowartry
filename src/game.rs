@@ -1,14 +1,14 @@
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
-    window::PrimaryWindow,
 };
 use bevy_rapier2d::{
     plugin::{NoUserData, RapierConfiguration, RapierPhysicsPlugin},
     render::RapierDebugRenderPlugin,
 };
 
-use crate::{layer, GameState};
+use crate::{layer, GlobalState};
+mod input_event;
 mod select_area;
 mod unit;
 mod unit_move;
@@ -21,8 +21,8 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Game>()
-            .add_systems(OnEnter(GameState::InGame), setup)
-            .add_systems(OnExit(GameState::InGame), cleanup)
+            .add_systems(OnEnter(GlobalState::InGame), setup)
+            .add_systems(OnExit(GlobalState::InGame), cleanup)
             .add_plugins((
                 RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0),
                 RapierDebugRenderPlugin::default(),
@@ -32,11 +32,11 @@ impl Plugin for GamePlugin {
                 unit_move::unit_move_plugin,
                 view_ctrl::view_ctrl_plugin,
                 select_area::select_area_plugin,
+                input_event::input_event_plugin,
             ))
             .add_systems(
                 Update,
-                (mouse_button_input, to_menu_on_return)
-                    .run_if(in_state(GameState::InGame)),
+                to_menu_on_return.run_if(in_state(GlobalState::InGame)),
             );
     }
 }
@@ -46,10 +46,6 @@ struct Cell(());
 #[derive(Resource, Default)]
 struct Game {
     board: Vec<Vec<Cell>>, // board[r][c]
-    /// window position of start of a right mouse drag, None if not dragging
-    right_drag_start: Option<Vec2>,
-    /// window position of start of a left mouse drag, None if not dragging
-    left_drag_start: Option<Vec2>,
 }
 
 impl Game {
@@ -151,38 +147,13 @@ fn cleanup(
     camera_proj.scale = 1.0;
 }
 
-/// update mouse click status(stored in Game resource) based on mouse input,
-/// majorly record the start of a left click or right click
-fn mouse_button_input(
-    buttons: Res<ButtonInput<MouseButton>>,
-    mut game: ResMut<Game>,
-    window: Query<&Window, With<PrimaryWindow>>,
-) {
-    let window = window.single();
-    if buttons.just_pressed(MouseButton::Right) {
-        info!("right clicked at window: {:?}", window.cursor_position());
-        game.right_drag_start = window.cursor_position();
-    }
-    if buttons.just_pressed(MouseButton::Left) {
-        info!("left clicked at window: {:?}", window.cursor_position());
-        game.left_drag_start = window.cursor_position();
-    }
-    // TODO: Game resource is responsible for recording last inplace left click
-    if buttons.just_released(MouseButton::Right) {
-        game.right_drag_start = None;
-    }
-    if buttons.just_released(MouseButton::Left) {
-        game.left_drag_start = None;
-    }
-}
-
 /// return to menu when press return key
 fn to_menu_on_return(
-    mut game_state: ResMut<NextState<GameState>>,
+    mut game_state: ResMut<NextState<GlobalState>>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
     if input.just_pressed(KeyCode::Enter) {
-        game_state.set(GameState::Menu)
+        game_state.set(GlobalState::Menu)
     }
 }
 
@@ -204,11 +175,13 @@ fn transform_to_cell(tf_xy: Vec2) -> (usize, usize) {
 }
 
 /// convert window position to world coords, which then can be used as transform
+/// to use this function, add camera_tf: Query<(&Camera, &GlobalTransform)> in
+/// the system parameter
 fn window_to_world_coords(
     window_pos: Vec2,
-    cam: &Camera,
-    cam_tf: &GlobalTransform,
+    camera_tf: &Query<(&Camera, &GlobalTransform)>,
 ) -> Option<Vec2> {
+    let (cam, cam_tf) = camera_tf.single();
     cam.viewport_to_world(cam_tf, window_pos)
         .map(|ray| ray.origin.truncate())
 }

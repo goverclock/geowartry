@@ -1,6 +1,6 @@
 use bevy::{app::AppExit, prelude::*};
 mod settings;
-use super::GameState;
+use super::GlobalState;
 use settings::*;
 
 #[derive(Default, Debug, States, Hash, Eq, PartialEq, Clone, Copy)]
@@ -49,7 +49,7 @@ impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<MenuState>()
             .insert_resource(GameSettings::default())
-            .add_systems(OnEnter(GameState::Menu), setup)
+            .add_systems(OnEnter(GlobalState::Menu), setup)
             .add_systems(OnEnter(MenuState::Main), main_menu_setup)
             .add_systems(
                 OnExit(MenuState::Main),
@@ -67,7 +67,7 @@ impl Plugin for MenuPlugin {
             .add_systems(
                 Update,
                 (menu_action, refresh_button_colors)
-                    .run_if(in_state(GameState::Menu)),
+                    .run_if(in_state(GlobalState::Menu)),
             );
     }
 }
@@ -78,7 +78,7 @@ fn menu_action(
         (Changed<Interaction>, With<Button>),
     >,
     mut app_exit_events: EventWriter<AppExit>,
-    mut game_state: ResMut<NextState<GameState>>,
+    mut game_state: ResMut<NextState<GlobalState>>,
     mut game_settings: ResMut<GameSettings>,
     mut menu_state: ResMut<NextState<MenuState>>,
 ) {
@@ -89,7 +89,7 @@ fn menu_action(
         match menu_button_action {
             MenuButtonAction::Play => {
                 info!("You pressed Play button!");
-                game_state.set(GameState::InGame);
+                game_state.set(GlobalState::InGame);
                 menu_state.set(MenuState::Disabled);
             }
             MenuButtonAction::ToSettings => {

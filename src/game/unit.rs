@@ -66,9 +66,9 @@ pub fn unit_plugin(app: &mut App) {
     app.add_event::<SpawnUnitEvent>()
         .add_systems(
             Update,
-            spawn_unit.run_if(in_state(super::GameState::InGame)),
+            spawn_unit.run_if(in_state(super::GlobalState::InGame)),
         )
-        .add_systems(OnExit(super::GameState::InGame), cleanup);
+        .add_systems(OnExit(super::GlobalState::InGame), cleanup);
 }
 
 fn spawn_unit(

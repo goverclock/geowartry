@@ -5,8 +5,9 @@ use bevy::{
     window::PrimaryWindow,
 };
 
-use super::{Selectable, Unit};
+use super::{input_event::MouseStatus, Selectable, Unit};
 
+/// the visible rectangle area entity
 #[derive(Component, Debug, Clone, Copy)]
 struct SelectArea {
     /// world coord of select area start
@@ -21,7 +22,8 @@ struct SelectAreaEvent(SelectArea);
 pub fn select_area_plugin(app: &mut App) {
     app.add_event::<SelectAreaEvent>().add_systems(
         Update,
-        (select_area, select_units).run_if(in_state(super::GameState::InGame)),
+        (select_area, select_units)
+            .run_if(in_state(super::GlobalState::InGame)),
     );
 }
 
@@ -39,11 +41,11 @@ fn select_area(
         &mut Mesh2dHandle,
         &mut SelectArea,
     )>,
-    game: ResMut<super::Game>,
+    mouse_status: ResMut<MouseStatus>,
     mut ev_select_area: EventWriter<SelectAreaEvent>,
 ) {
     // not dragging select, despawn the rectangle area if exist
-    if game.left_drag_start.is_none() {
+    if mouse_status.left_drag_start.is_none() {
         match query_select_area.get_single() {
             Ok((e, _, _, area)) => {
                 ev_select_area.send(SelectAreaEvent(*area));
@@ -60,7 +62,7 @@ fn select_area(
 
     // dragging
     // get drag start and current window position
-    let start = game.left_drag_start.unwrap();
+    let start = mouse_status.left_drag_start.unwrap();
     let cur = window.single().cursor_position();
     if cur.is_none() || start == cur.unwrap() {
         return;
@@ -68,9 +70,8 @@ fn select_area(
     let cur = cur.unwrap();
 
     // turn drag start/end window position into world coords
-    let (cam, cam_tf) = camera_tf.single();
-    let start = super::window_to_world_coords(start, cam, cam_tf);
-    let cur = super::window_to_world_coords(cur, cam, cam_tf);
+    let start = super::window_to_world_coords(start, &camera_tf);
+    let cur = super::window_to_world_coords(cur, &camera_tf);
     if start.is_none() || cur.is_none() {
         info!(
             "cursor position to world is None, not handled for selecting area"

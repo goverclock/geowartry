@@ -6,7 +6,7 @@ mod layer;
 mod menu;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Hash, States)]
-enum GameState {
+enum GlobalState {
     #[default]
     Menu,
     InGame,
@@ -15,7 +15,7 @@ enum GameState {
 
 fn main() {
     App::new()
-        .init_state::<GameState>()
+        .init_state::<GlobalState>()
         .add_systems(Startup, setup)
         .add_plugins((DefaultPlugins, game::GamePlugin, menu::MenuPlugin))
         .run();
