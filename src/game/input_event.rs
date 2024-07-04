@@ -15,7 +15,14 @@ pub struct SelectSingleUnitEvent(pub Entity);
 #[derive(Event, Debug)]
 struct SetUnitDestEvent((i64, i64));
 
-#[derive(Event)]
+/// TODO: for debug only, works with select_unit::debug_unit_set_dest
+/// set a dest for selected unit, which causes the unit move directly to the
+/// cell
+#[cfg(debug_assertions)]
+#[derive(Event, Debug)]
+pub struct DebugSetUnitDestEvent(pub (i64, i64));
+
+#[derive(Event, Debug)]
 pub struct SelectAreaUnitsEvent(pub SelectArea);
 
 /// the visible rectangle area entity
@@ -53,6 +60,8 @@ pub fn input_event_plugin(app: &mut App) {
             (mouse_button_input, select_area)
                 .run_if(in_state(super::GlobalState::InGame)),
         );
+    #[cfg(debug_assertions)]
+    app.add_event::<DebugSetUnitDestEvent>();
 }
 
 /// update mouse click status(stored in Game resource) based on mouse input,
@@ -62,6 +71,9 @@ fn mouse_button_input(
     mut mouse_status: ResMut<MouseStatus>,
     mut ev_select_single_unit: EventWriter<SelectSingleUnitEvent>,
     mut ev_set_unit_dest: EventWriter<SetUnitDestEvent>,
+    #[cfg(debug_assertions)] mut ev_debug_set_unit_dest: EventWriter<
+        DebugSetUnitDestEvent,
+    >,
     window: Query<&Window, With<PrimaryWindow>>,
     camera_tf: Query<(&Camera, &GlobalTransform)>,
     rapier_context: Res<RapierContext>,
@@ -112,6 +124,12 @@ fn mouse_button_input(
                 let cell_coord = super::transform_to_cell(point);
                 info!("sending {:?}", SetUnitDestEvent(cell_coord));
                 ev_set_unit_dest.send(SetUnitDestEvent(cell_coord));
+                #[cfg(debug_assertions)]
+                {
+                    info!("sending {:?}", DebugSetUnitDestEvent(cell_coord));
+                    ev_debug_set_unit_dest
+                        .send(DebugSetUnitDestEvent(cell_coord));
+                }
             }
         }
         mouse_status.left_drag_start = None;

@@ -16,13 +16,14 @@ pub struct Health {
     pub cur: usize,
 }
 
-/// a component to mark units that are selectable, the bool value represents if it's selected now
+/// a component to mark units that are selectable, the bool value represents if
+/// it's selected now
 #[derive(Component)]
 pub struct Selectable(pub bool);
 
-/// a serise of cell coords, serves as the path to final dest(the last coord in the vec)
+/// TODO: for debug only, works with input_event::DebugUnitMoveEvent
 #[derive(Component)]
-pub struct PathDest(Vec<(usize, usize)>); // TODO: change this to (i64, i64)
+pub struct DebugMoveDest(pub Option<(i64, i64)>);
 
 #[derive(Bundle)]
 struct Physics2dBundle {
@@ -120,6 +121,7 @@ fn spawn_unit(
                         mass: AdditionalMassProperties::Mass(1.0),
                         sleep: Sleeping::disabled(),
                     },
+                    DebugMoveDest(None),
                 ));
             }
             UnitType::Miner => {
