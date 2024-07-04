@@ -1,18 +1,17 @@
-use bevy::{
-    prelude::*,
-    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
-};
+use bevy::prelude::*;
 use bevy_rapier2d::{
     plugin::{NoUserData, RapierConfiguration, RapierPhysicsPlugin},
     render::RapierDebugRenderPlugin,
 };
 
 use crate::{layer, GlobalState};
+mod cell;
 mod input_event;
 mod select_unit;
 mod unit;
 mod unit_move;
 mod view_ctrl;
+use cell::*;
 use layer::Layer;
 use unit::*;
 
@@ -41,11 +40,9 @@ impl Plugin for GamePlugin {
     }
 }
 
-struct Cell(());
-
 #[derive(Resource, Default)]
 struct Game {
-    board: Vec<Vec<Cell>>, // board[r][c]
+    board: Vec<Vec<cell::Cell>>, // board[r][c]
 }
 
 impl Game {
@@ -66,50 +63,34 @@ fn setup(
     rapier_config.gravity = Vec2::ZERO;
 
     // initialize the board
-    game.board = (0..Game::BOARD_ROW)
+    game.board = (0..Game::BOARD_ROW as i64)
         .map(|r| {
-            (0..Game::BOARD_COLUMN)
-                .map(|c| {
-                    // draw a bigger outer square as boarder
-                    let shape_outer =
-                        Mesh2dHandle(meshes.add(Rectangle::new(
-                            Game::CELL_SIZE,
-                            Game::CELL_SIZE,
-                        )));
-                    cmds.spawn(MaterialMesh2dBundle {
-                        mesh: shape_outer,
-                        material: materials.add(Color::AZURE),
-                        transform: Transform::from_xyz(
-                            c as f32 * Game::CELL_SIZE,
-                            r as f32 * Game::CELL_SIZE,
-                            Layer::GameMap.into(),
-                        ),
-                        ..default()
-                    });
-
-                    // draw a smaller inner square as fill
-                    let shape_inner = Mesh2dHandle(meshes.add(Rectangle::new(
-                        Game::CELL_SIZE - 1.0,
-                        Game::CELL_SIZE - 1.0,
-                    )));
-                    let mut inner_z: f32 = Layer::GameMap.into();
-                    inner_z += 0.1;
-                    cmds.spawn(MaterialMesh2dBundle {
-                        mesh: shape_inner,
-                        material: materials.add(Color::GRAY),
-                        transform: Transform::from_xyz(
-                            c as f32 * Game::CELL_SIZE,
-                            r as f32 * Game::CELL_SIZE,
-                            inner_z,
-                        ),
-                        ..default()
-                    });
-
-                    Cell(())
+            (0..Game::BOARD_COLUMN as i64)
+                .map(|c| Cell {
+                    coord: (r, c),
+                    state: CellState::Empty,
                 })
                 .collect()
         })
         .collect();
+    game.board[2][3].state = CellState::Water;
+    game.board[2][4].state = CellState::Water;
+    game.board[2][5].state = CellState::Water;
+    game.board[3][4].state = CellState::Iron;
+    game.board[3][5].state = CellState::Iron;
+    game.board[3][6].state = CellState::Iron;
+
+    // and draw the cells
+    for r in 0..Game::BOARD_ROW {
+        for c in 0..Game::BOARD_COLUMN {
+            game.board[r][c].draw(
+                (r as i64, c as i64),
+                &mut cmds,
+                &mut meshes,
+                &mut materials,
+            );
+        }
+    }
 
     // TODO: spawning these random entities for debug purpose
     // generate some units
@@ -121,6 +102,7 @@ fn setup(
     //     unit_type: UnitType::Attacker,
     //     cell_coord: (10, 10),
     // });
+
     ev_spawn_unit.send(SpawnUnitEvent {
         unit_type: UnitType::Miner,
         cell_coord: (10, 0),
