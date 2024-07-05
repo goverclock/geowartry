@@ -35,6 +35,11 @@ pub struct MouseStatus {
     pub left_drag_start: Option<Vec2>,
 }
 
+impl MouseStatus {
+    /// if the drag distance is lower than this, it's treated as a click
+    const DRAG_DISTANCE_THRESHOLD: f32 = 10.0;
+}
+
 /// this plugin is responsible for generating events that **actually** influence
 /// the game(e.g. command to move all selected units, rather than moving the
 /// view) based on user inputs
@@ -77,19 +82,16 @@ fn mouse_button_input(
     }
     if buttons.just_released(MouseButton::Left)
         && mouse_status.left_drag_start.is_some()
+        && window.cursor_position().is_some()
     {
-        if window.cursor_position() == mouse_status.left_drag_start {
-            info!(
-                "in-place left clicked at window: {:?}",
-                window.cursor_position()
-            );
+        let win_pos = window.cursor_position().unwrap();
+        let drag_start = mouse_status.left_drag_start.unwrap();
+        if win_pos.distance(drag_start) < MouseStatus::DRAG_DISTANCE_THRESHOLD {
+            info!("in-place left clicked at window: {:?}", win_pos);
 
             // check if the click is on a unit
-            let point = super::window_to_world_coords(
-                window.cursor_position().unwrap(),
-                &camera_tf,
-            )
-            .unwrap();
+            let point =
+                super::window_to_world_coords(win_pos, &camera_tf).unwrap();
             let mut on_unit = false;
             rapier_context.intersections_with_point(
                 point,
@@ -168,6 +170,11 @@ fn select_area(
     }
     let start_world_coord = start.unwrap();
     let cur_world_coord = cur.unwrap();
+    if start_world_coord.distance(cur_world_coord)
+        < MouseStatus::DRAG_DISTANCE_THRESHOLD
+    {
+        return;
+    }
 
     // the transform of a rect is the center of it
     let middle_world_coord = Vec2::new(
