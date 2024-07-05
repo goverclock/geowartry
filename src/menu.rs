@@ -53,7 +53,7 @@ impl Plugin for MenuPlugin {
             .add_systems(OnEnter(MenuState::Main), main_menu_setup)
             .add_systems(
                 OnExit(MenuState::Main),
-                despawn_screen::<OnMenuMainScreen>,
+                crate::game::despawn_with_component::<OnMenuMainScreen>,
             )
             .add_systems(OnEnter(MenuState::Settings), settings_menu_setup)
             .add_systems(
@@ -62,7 +62,7 @@ impl Plugin for MenuPlugin {
             )
             .add_systems(
                 OnExit(MenuState::Settings),
-                despawn_screen::<OnMenuSettingsScreen>,
+                crate::game::despawn_with_component::<OnMenuSettingsScreen>,
             )
             .add_systems(
                 Update,
@@ -155,16 +155,6 @@ fn refresh_setting_value(
     for (mut text, &setting_type) in &mut query {
         let value = get_setting_value(&game_settings, setting_type);
         *text = Text::from_section(value.to_string(), ts.clone());
-    }
-}
-
-fn despawn_screen<T: Component>(
-    to_despawn: Query<Entity, With<T>>,
-    mut cmds: Commands,
-) {
-    info!("despaw_screen: called");
-    for e in &to_despawn {
-        cmds.entity(e).despawn_recursive();
     }
 }
 

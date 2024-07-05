@@ -11,7 +11,6 @@ mod select_unit;
 mod unit;
 mod unit_move;
 mod view_ctrl;
-use cell::*;
 use layer::Layer;
 use unit::*;
 
@@ -29,6 +28,7 @@ impl Plugin for GamePlugin {
             .add_plugins((
                 unit::unit_plugin,
                 unit_move::unit_move_plugin,
+                cell::cell_plugin,
                 view_ctrl::view_ctrl_plugin,
                 select_unit::select_unit_plugin,
                 input_event::input_event_plugin,
@@ -41,9 +41,7 @@ impl Plugin for GamePlugin {
 }
 
 #[derive(Resource, Default)]
-struct Game {
-    board: Vec<Vec<cell::Cell>>, // board[r][c]
-}
+struct Game;
 
 impl Game {
     const BOARD_ROW: usize = 10;
@@ -52,45 +50,11 @@ impl Game {
 }
 
 fn setup(
-    mut cmds: Commands,
-    mut game: ResMut<Game>,
     mut rapier_config: ResMut<RapierConfiguration>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut ev_spawn_unit: EventWriter<SpawnUnitEvent>,
 ) {
     // set gravity to zero
     rapier_config.gravity = Vec2::ZERO;
-
-    // initialize the board
-    game.board = (0..Game::BOARD_ROW as i64)
-        .map(|r| {
-            (0..Game::BOARD_COLUMN as i64)
-                .map(|c| Cell {
-                    coord: (r, c),
-                    state: CellState::Empty,
-                })
-                .collect()
-        })
-        .collect();
-    game.board[2][3].state = CellState::Water;
-    game.board[2][4].state = CellState::Water;
-    game.board[2][5].state = CellState::Water;
-    game.board[3][4].state = CellState::Iron;
-    game.board[3][5].state = CellState::Iron;
-    game.board[3][6].state = CellState::Iron;
-
-    // and draw the cells
-    for r in 0..Game::BOARD_ROW {
-        for c in 0..Game::BOARD_COLUMN {
-            game.board[r][c].draw(
-                (r as i64, c as i64),
-                &mut cmds,
-                &mut meshes,
-                &mut materials,
-            );
-        }
-    }
 
     // TODO: spawning these random entities for debug purpose
     // generate some units
@@ -147,7 +111,7 @@ fn cell_to_transform(cell_coord: (usize, usize)) -> Vec2 {
     }
 }
 
-/// convert world transform's xy to cell coord
+/// convert world transform's xy to cell coord(col, row)
 fn transform_to_cell(tf_xy: Vec2) -> (i64, i64) {
     let x = if tf_xy.x > 0.0 {
         tf_xy.x + Game::CELL_SIZE * 0.5
@@ -172,4 +136,14 @@ fn window_to_world_coords(
     let (cam, cam_tf) = camera_tf.single();
     cam.viewport_to_world(cam_tf, window_pos)
         .map(|ray| ray.origin.truncate())
+}
+
+pub fn despawn_with_component<T: Component>(
+    to_despawn: Query<Entity, With<T>>,
+    mut cmds: Commands,
+) {
+    info!("despawn with component: to_despawn={:?}", to_despawn);
+    for e in &to_despawn {
+        cmds.entity(e).despawn_recursive();
+    }
 }
