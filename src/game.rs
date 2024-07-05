@@ -44,8 +44,8 @@ impl Plugin for GamePlugin {
 struct Game;
 
 impl Game {
-    const BOARD_ROW: usize = 10;
-    const BOARD_COLUMN: usize = 15;
+    const BOARD_ROW: usize = 20;
+    const BOARD_COLUMN: usize = 35;
     const CELL_SIZE: f32 = 40.0;
 }
 

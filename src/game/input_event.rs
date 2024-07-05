@@ -16,8 +16,7 @@ pub struct SelectSingleUnitEvent(pub Entity);
 struct SetUnitDestEvent((i64, i64));
 
 /// TODO: for debug only, works with select_unit::debug_unit_set_dest
-/// set a dest for selected unit, which causes the unit move directly to the
-/// cell
+/// set a dest for all units, which causes them to find path to the cell
 #[cfg(debug_assertions)]
 #[derive(Event, Debug)]
 pub struct DebugSetUnitDestEvent(pub (i64, i64));

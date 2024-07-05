@@ -1,14 +1,21 @@
 /// z value for transforms
 #[derive(PartialEq)]
 pub enum Layer {
+    Debug,
     SelectArea,
     Units,
     GameMap,
 }
 
 impl Layer {
-    fn iter() -> core::array::IntoIter<Layer, 3> {
-        [Layer::SelectArea, Layer::Units, Layer::GameMap].into_iter()
+    fn iter() -> core::array::IntoIter<Layer, 4> {
+        [
+            Layer::Debug,
+            Layer::SelectArea,
+            Layer::Units,
+            Layer::GameMap,
+        ]
+        .into_iter()
     }
 }
 

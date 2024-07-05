@@ -17,6 +17,11 @@ pub struct Cell {
     pub state: CellState,
     /// visual entity for inner and outer
     visual: Option<(Entity, Entity)>,
+    /// distance of this cell to debug target cell
+    #[cfg(debug_assertions)]
+    debug_distance: f32,
+    #[cfg(debug_assertions)]
+    debug_visual: Option<Entity>,
 }
 
 /// all the cells has this component, for clean up
@@ -45,6 +50,10 @@ pub struct UpdateCellEvent {
 #[derive(Resource, Default)]
 struct CellField(Vec<Vec<Cell>>); // board[c][r]
 
+#[cfg(debug_assertions)]
+#[derive(Event)]
+struct DebugRedrawEvent;
+
 pub fn cell_plugin(app: &mut App) {
     app.add_event::<UpdateCellEvent>()
         .init_resource::<CellField>()
@@ -56,18 +65,23 @@ pub fn cell_plugin(app: &mut App) {
         .add_systems(Update, cell_state.run_if(in_state(GlobalState::InGame)));
 
     #[cfg(debug_assertions)]
-    app.add_systems(
+    app.add_event::<DebugRedrawEvent>().add_systems(
         Update,
-        debug_alter_cell_state.run_if(in_state(GlobalState::InGame)),
+        (
+            debug_alter_cell_state,
+            debug_calculate_distance,
+            debug_visual_redraw,
+        )
+            .run_if(in_state(GlobalState::InGame)),
     );
 }
 
 /// create the cell field when game starts
 fn setup(
-    mut cmds: Commands,
+    cmds: Commands,
     mut field: ResMut<CellField>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<ColorMaterial>>,
 ) {
     field.0 = (0..Game::BOARD_COLUMN as i64)
         .map(|c| {
@@ -76,6 +90,10 @@ fn setup(
                     coord: (c, r),
                     state: CellState::Empty,
                     visual: None,
+                    #[cfg(debug_assertions)]
+                    debug_distance: 0.0,
+                    #[cfg(debug_assertions)]
+                    debug_visual: None,
                 })
                 .collect()
         })
@@ -92,11 +110,7 @@ fn setup(
     }
 
     // and draw the cells
-    for r in 0..Game::BOARD_ROW {
-        for c in 0..Game::BOARD_COLUMN {
-            field.0[c][r].draw(&mut cmds, &mut meshes, &mut materials);
-        }
-    }
+    field.draw_all(cmds, meshes, materials);
 }
 
 fn cleanup(mut field: ResMut<CellField>) {
@@ -181,6 +195,70 @@ impl Cell {
             .id();
 
         self.visual = Some((inner, outer));
+
+        #[cfg(debug_assertions)]
+        self.debug_draw(cmds, meshes, materials);
+    }
+
+    /// will only be called at the end of draw()
+    #[cfg(debug_assertions)]
+    pub fn debug_draw(
+        &mut self,
+        cmds: &mut Commands,
+        meshes: &mut ResMut<Assets<Mesh>>,
+        materials: &mut ResMut<Assets<ColorMaterial>>,
+    ) {
+        if let Some(dv) = self.debug_visual {
+            cmds.entity(dv).despawn();
+        }
+        let (c, r) = self.coord;
+        let distance_visual = cmds
+            .spawn((
+                Text2dBundle {
+                    text: Text {
+                        sections: vec![TextSection::new(
+                            format!("{:.1}", self.debug_distance),
+                            TextStyle {
+                                font_size: 15.0,
+                                color: if self.debug_distance == 0.0 {
+                                    Color::RED
+                                } else {
+                                    Color::BLACK
+                                },
+                                ..default()
+                            },
+                        )],
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(
+                        c as f32 * Game::CELL_SIZE,
+                        r as f32 * Game::CELL_SIZE,
+                        Layer::Debug.into(),
+                    ),
+                    text_anchor: bevy::sprite::Anchor::TopCenter,
+                    ..default()
+                },
+                CellVisual,
+            ))
+            .id();
+        self.debug_visual = Some(distance_visual);
+    }
+}
+
+impl CellField {
+    /// draw/redraw all the Cell's visual entity
+    fn draw_all(
+        &mut self,
+        mut cmds: Commands,
+        mut meshes: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<ColorMaterial>>,
+    ) {
+        info!("draw_all");
+        for r in 0..Game::BOARD_ROW {
+            for c in 0..Game::BOARD_COLUMN {
+                self.0[c][r].draw(&mut cmds, &mut meshes, &mut materials);
+            }
+        }
     }
 }
 
@@ -201,6 +279,7 @@ fn cell_state(
     }
 }
 
+/// use left&right shift to change a cell to empty or iron
 #[cfg(debug_assertions)]
 fn debug_alter_cell_state(
     kb_input: Res<ButtonInput<KeyCode>>,
@@ -244,4 +323,82 @@ fn debug_alter_cell_state(
         coord: cell_coord,
         new_state: target_state.unwrap(),
     });
+}
+
+/// calculate all cell's distance to the debug target cell using BFS
+use super::input_event::DebugSetUnitDestEvent;
+#[cfg(debug_assertions)]
+fn debug_calculate_distance(
+    mut field: ResMut<CellField>,
+    mut ev_debug_set_unit_dest: EventReader<DebugSetUnitDestEvent>,
+    mut ev_debug_redraw: EventWriter<DebugRedrawEvent>,
+) {
+    if ev_debug_set_unit_dest.is_empty() {
+        return;
+    }
+    let dest = ev_debug_set_unit_dest.read().next().unwrap().0;
+
+    // reset previous results
+    info!("reset distances");
+    for c in 0..field.0.len() {
+        for r in 0..field.0[0].len() {
+            field.0[c][r].debug_distance =
+                (Game::BOARD_COLUMN + Game::BOARD_ROW) as f32;
+        }
+    }
+    field.0[dest.0 as usize][dest.1 as usize].debug_distance = 0.0;
+
+    use std::collections::VecDeque;
+    let dx = [0, 1, 0, -1, -1, -1, 1, 1];
+    let dy = [1, 0, -1, 0, 1, -1, 1, -1];
+    let mut q: VecDeque<(i64, i64, f32)> = VecDeque::new();
+    q.push_back((dest.0, dest.1, 0.0));
+    while !q.is_empty() {
+        let (x, y, distance) = q.pop_front().unwrap();
+        for i in 0..8 {
+            let nx = x + dx[i];
+            let ny = y + dy[i];
+            if nx < 0
+                || nx >= Game::BOARD_COLUMN as i64
+                || ny < 0
+                || ny >= Game::BOARD_ROW as i64
+            {
+                continue;
+            }
+            let new_distance =
+                distance + ((dx[i] * dx[i] + dy[i] * dy[i]) as f32).sqrt();
+            if !field.0[nx as usize][ny as usize].is_passable() {
+                continue;
+            }
+            // avoid moving diagonally through two obstacles
+            if dx[i] * dy[i] != 0 {
+                if !field.0[x as usize][ny as usize].is_passable()
+                    && !field.0[nx as usize][y as usize].is_passable()
+                {
+                    continue;
+                }
+            }
+
+            let ncell = &mut field.0[nx as usize][ny as usize];
+            if new_distance < ncell.debug_distance {
+                ncell.debug_distance = new_distance;
+                q.push_back((nx, ny, new_distance));
+            }
+        }
+    }
+    ev_debug_redraw.send(DebugRedrawEvent);
+}
+
+#[cfg(debug_assertions)]
+fn debug_visual_redraw(
+    mut ev_debug_redraw: EventReader<DebugRedrawEvent>,
+    mut field: ResMut<CellField>,
+    cmds: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<ColorMaterial>>,
+) {
+    for _ in ev_debug_redraw.read() {
+        field.draw_all(cmds, meshes, materials);
+        return;
+    }
 }

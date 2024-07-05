@@ -62,7 +62,9 @@ pub fn kb_move_view(
 }
 
 /// use = and - key to zoom in and out camera view
-/// ### Note: this function is for debug purpose only
+/// ### Note: this function is for debug purpose only.
+/// ### TODO(bug): zooming in/out will break the convert between cursor position
+/// and cell coord
 pub fn zoom_view(
     mut query_camera: Query<&mut OrthographicProjection, With<Camera>>,
     input: Res<ButtonInput<KeyCode>>,
