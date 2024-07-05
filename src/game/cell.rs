@@ -83,30 +83,16 @@ fn setup(
     meshes: ResMut<Assets<Mesh>>,
     materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    field.0 = (0..Game::BOARD_COLUMN as i64)
-        .map(|c| {
-            (0..Game::BOARD_ROW as i64)
-                .map(|r| Cell {
-                    coord: (c, r),
-                    state: CellState::Empty,
-                    visual: None,
-                    #[cfg(debug_assertions)]
-                    debug_distance: 0.0,
-                    #[cfg(debug_assertions)]
-                    debug_visual: None,
-                })
-                .collect()
-        })
-        .collect();
+    field.init();
 
     #[cfg(debug_assertions)]
     {
-        field.0[2][3].state = CellState::Water;
-        field.0[2][4].state = CellState::Water;
-        field.0[2][5].state = CellState::Water;
-        field.0[3][4].state = CellState::Iron;
-        field.0[3][5].state = CellState::Iron;
-        field.0[3][6].state = CellState::Iron;
+        field.get_cell((2, 3)).state = CellState::Water;
+        field.get_cell((2, 4)).state = CellState::Water;
+        field.get_cell((2, 5)).state = CellState::Water;
+        field.get_cell((3, 4)).state = CellState::Iron;
+        field.get_cell((3, 5)).state = CellState::Iron;
+        field.get_cell((3, 6)).state = CellState::Iron;
     }
 
     // and draw the cells
@@ -116,7 +102,7 @@ fn setup(
 fn cleanup(mut field: ResMut<CellField>) {
     // visual entities are despawned using super::despawn_with_component
 
-    field.0 = vec![];
+    field.clear();
 }
 
 impl Cell {
@@ -212,16 +198,20 @@ impl Cell {
             cmds.entity(dv).despawn();
         }
         let (c, r) = self.coord;
+        let mut s = format!("{:.1}", self.debug_distance);
+        if self.debug_distance == f32::MAX {
+            s = String::from("inf");
+        }
         let distance_visual = cmds
             .spawn((
                 Text2dBundle {
                     text: Text {
                         sections: vec![TextSection::new(
-                            format!("{:.1}", self.debug_distance),
+                            s,
                             TextStyle {
                                 font_size: 15.0,
                                 color: if self.debug_distance == 0.0 {
-                                    Color::RED
+                                    Color::GREEN
                                 } else {
                                     Color::BLACK
                                 },
@@ -246,6 +236,29 @@ impl Cell {
 }
 
 impl CellField {
+    fn init(&mut self) {
+        self.0 = (0..Game::BOARD_COLUMN as i64)
+            .map(|c| {
+                (0..Game::BOARD_ROW as i64)
+                    .map(|r| Cell {
+                        coord: (c, r),
+                        state: CellState::Empty,
+                        visual: None,
+                        #[cfg(debug_assertions)]
+                        debug_distance: 0.0,
+                        #[cfg(debug_assertions)]
+                        debug_visual: None,
+                    })
+                    .collect()
+            })
+            .collect();
+    }
+
+    fn get_cell(&mut self, cell_coord: (i64, i64)) -> &mut Cell {
+        let (c, r) = cell_coord;
+        &mut self.0[c as usize][r as usize]
+    }
+
     /// draw/redraw all the Cell's visual entity
     fn draw_all(
         &mut self,
@@ -254,11 +267,40 @@ impl CellField {
         mut materials: ResMut<Assets<ColorMaterial>>,
     ) {
         info!("draw_all");
-        for r in 0..Game::BOARD_ROW {
-            for c in 0..Game::BOARD_COLUMN {
-                self.0[c][r].draw(&mut cmds, &mut meshes, &mut materials);
+        for r in 0..Game::BOARD_ROW as i64 {
+            for c in 0..Game::BOARD_COLUMN as i64 {
+                self.get_cell((c, r)).draw(
+                    &mut cmds,
+                    &mut meshes,
+                    &mut materials,
+                );
             }
         }
+    }
+
+    #[allow(unused)]
+    fn min_col(&self) -> i64 {
+        0
+    }
+
+    #[allow(unused)]
+    fn max_col(&self) -> i64 {
+        Game::BOARD_COLUMN as i64 - 1
+    }
+
+    #[allow(unused)]
+    fn min_row(&self) -> i64 {
+        0
+    }
+
+    #[allow(unused)]
+    fn max_row(&self) -> i64 {
+        Game::BOARD_ROW as i64 - 1
+    }
+
+    /// should only be called at cleanup
+    fn clear(&mut self) {
+        self.0 = vec![];
     }
 }
 
@@ -270,10 +312,7 @@ fn cell_state(
     mut ev_update_cell: EventReader<UpdateCellEvent>,
 ) {
     for e in ev_update_cell.read() {
-        let (c, r) = e.coord;
-        // TODO: to support negative index, implement another way to retrive
-        // cell
-        let cell = &mut field.0[c as usize][r as usize];
+        let cell = field.get_cell(e.coord);
         cell.state = e.new_state;
         cell.draw(&mut cmds, &mut meshes, &mut materials);
     }
@@ -340,13 +379,12 @@ fn debug_calculate_distance(
 
     // reset previous results
     info!("reset distances");
-    for c in 0..field.0.len() {
-        for r in 0..field.0[0].len() {
-            field.0[c][r].debug_distance =
-                (Game::BOARD_COLUMN + Game::BOARD_ROW) as f32;
+    for c in 0..field.0.len() as i64 {
+        for r in 0..field.0[0].len() as i64 {
+            field.get_cell((c, r)).debug_distance = f32::MAX;
         }
     }
-    field.0[dest.0 as usize][dest.1 as usize].debug_distance = 0.0;
+    field.get_cell(dest).debug_distance = 0.0;
 
     use std::collections::VecDeque;
     let dx = [0, 1, 0, -1, -1, -1, 1, 1];
@@ -367,19 +405,19 @@ fn debug_calculate_distance(
             }
             let new_distance =
                 distance + ((dx[i] * dx[i] + dy[i] * dy[i]) as f32).sqrt();
-            if !field.0[nx as usize][ny as usize].is_passable() {
+            if !field.get_cell((nx, ny)).is_passable() {
                 continue;
             }
             // avoid moving diagonally through two obstacles
             if dx[i] * dy[i] != 0 {
-                if !field.0[x as usize][ny as usize].is_passable()
-                    && !field.0[nx as usize][y as usize].is_passable()
+                if !field.get_cell((x, ny)).is_passable()
+                    && !field.get_cell((nx, y)).is_passable()
                 {
                     continue;
                 }
             }
 
-            let ncell = &mut field.0[nx as usize][ny as usize];
+            let ncell = &mut field.get_cell((nx, ny));
             if new_distance < ncell.debug_distance {
                 ncell.debug_distance = new_distance;
                 q.push_back((nx, ny, new_distance));
