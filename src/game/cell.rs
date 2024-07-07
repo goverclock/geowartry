@@ -1,3 +1,5 @@
+use core::panic;
+
 use super::Game;
 use super::Layer;
 use crate::GlobalState;
@@ -12,6 +14,7 @@ use bevy::{
 /// algorithm.
 /// if there is entity(e.g. building, mine) occupying this cell, it just convert
 /// itself to matching movable state, it does not manager the entity.
+#[derive(Debug)]
 pub struct Cell {
     pub coord: (i64, i64),
     pub state: CellState,
@@ -21,7 +24,11 @@ pub struct Cell {
     #[cfg(debug_assertions)]
     debug_distance: f32,
     #[cfg(debug_assertions)]
-    debug_visual: Option<Entity>,
+    debug_distance_visual: Option<Entity>,
+    #[cfg(debug_assertions)]
+    debug_direction: Vec2,
+    #[cfg(debug_assertions)]
+    debug_direction_visual: Option<Entity>,
 }
 
 /// all the cells has this component, for clean up
@@ -69,7 +76,7 @@ pub fn cell_plugin(app: &mut App) {
         Update,
         (
             debug_alter_cell_state,
-            debug_calculate_distance,
+            debug_calculate_distance_direction,
             debug_visual_redraw,
         )
             .run_if(in_state(GlobalState::InGame)),
@@ -87,12 +94,12 @@ fn setup(
 
     #[cfg(debug_assertions)]
     {
-        field.get_cell((2, 3)).state = CellState::Water;
-        field.get_cell((2, 4)).state = CellState::Water;
-        field.get_cell((2, 5)).state = CellState::Water;
-        field.get_cell((3, 4)).state = CellState::Iron;
-        field.get_cell((3, 5)).state = CellState::Iron;
-        field.get_cell((3, 6)).state = CellState::Iron;
+        field.get_cell_mut((2, 3)).state = CellState::Water;
+        field.get_cell_mut((2, 4)).state = CellState::Water;
+        field.get_cell_mut((2, 5)).state = CellState::Water;
+        field.get_cell_mut((3, 4)).state = CellState::Iron;
+        field.get_cell_mut((3, 5)).state = CellState::Iron;
+        field.get_cell_mut((3, 6)).state = CellState::Iron;
     }
 
     // and draw the cells
@@ -183,21 +190,27 @@ impl Cell {
         self.visual = Some((inner, outer));
 
         #[cfg(debug_assertions)]
-        self.debug_draw(cmds, meshes, materials);
+        self.debug_draw(cmds);
     }
 
     /// will only be called at the end of draw()
     #[cfg(debug_assertions)]
-    pub fn debug_draw(
-        &mut self,
-        cmds: &mut Commands,
-        meshes: &mut ResMut<Assets<Mesh>>,
-        materials: &mut ResMut<Assets<ColorMaterial>>,
-    ) {
-        if let Some(dv) = self.debug_visual {
-            cmds.entity(dv).despawn();
-        }
+    pub fn debug_draw(&mut self, cmds: &mut Commands) {
         let (c, r) = self.coord;
+
+        if let Some(dist_visual) = self.debug_distance_visual {
+            cmds.entity(dist_visual).despawn();
+            self.debug_distance_visual = None;
+        }
+        if let Some(dire_visual) = self.debug_direction_visual {
+            cmds.entity(dire_visual).despawn();
+            self.debug_direction_visual = None;
+        }
+        if !self.is_passable() {
+            return;
+        }
+
+        // distance visual
         let mut s = format!("{:.1}", self.debug_distance);
         if self.debug_distance == f32::MAX {
             s = String::from("inf");
@@ -231,11 +244,49 @@ impl Cell {
                 CellVisual,
             ))
             .id();
-        self.debug_visual = Some(distance_visual);
+        self.debug_distance_visual = Some(distance_visual);
+
+        // direction visual
+        let arrow = "-->".to_string();
+        // let arrow = format!(
+        //     "({:.1}, {:.1})",
+        //     self.debug_direction.x, self.debug_direction.y
+        // );
+        let mut tf = Transform::from_xyz(
+            c as f32 * Game::CELL_SIZE,
+            r as f32 * Game::CELL_SIZE,
+            Layer::Debug.into(),
+        );
+        let angle = self.debug_direction.y.atan2(self.debug_direction.x);
+        tf.rotate(Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), angle));
+        let direction_visual = cmds
+            .spawn((
+                Text2dBundle {
+                    text: Text {
+                        sections: vec![TextSection::new(
+                            arrow,
+                            TextStyle {
+                                font_size: 20.0,
+                                color: Color::ALICE_BLUE,
+                                ..default()
+                            },
+                        )],
+                        ..default()
+                    },
+                    transform: tf,
+                    text_anchor: bevy::sprite::Anchor::Center,
+                    ..default()
+                },
+                CellVisual,
+            ))
+            .id();
+        self.debug_direction_visual = Some(direction_visual);
     }
 }
 
 impl CellField {
+    /// create a cell field of [`Game::BOARD_ROW`] rows and
+    /// [`Game::BOARD_COLUMN`] columns
     fn init(&mut self) {
         self.0 = (0..Game::BOARD_COLUMN as i64)
             .map(|c| {
@@ -247,16 +298,74 @@ impl CellField {
                         #[cfg(debug_assertions)]
                         debug_distance: 0.0,
                         #[cfg(debug_assertions)]
-                        debug_visual: None,
+                        debug_distance_visual: None,
+                        #[cfg(debug_assertions)]
+                        debug_direction: Vec2::ZERO,
+                        #[cfg(debug_assertions)]
+                        debug_direction_visual: None,
                     })
                     .collect()
             })
             .collect();
     }
 
-    fn get_cell(&mut self, cell_coord: (i64, i64)) -> &mut Cell {
+    /// TODO: should support negative coords
+    fn get_cell(&self, cell_coord: (i64, i64)) -> &Cell {
         let (c, r) = cell_coord;
+        if c < Self::min_col() || c > Self::max_col() {
+            panic!("invalid column index: {c}");
+        }
+        if r < Self::min_row() || r > Self::max_row() {
+            panic!("invalid row index: {r}");
+        }
+        &self.0[c as usize][r as usize]
+    }
+
+    fn get_cell_mut(&mut self, cell_coord: (i64, i64)) -> &mut Cell {
+        let (c, r) = cell_coord;
+        if c < Self::min_col() || c > Self::max_col() {
+            panic!("invalid column index: {c}");
+        }
+        if r < Self::min_row() || r > Self::max_row() {
+            panic!("invalid row index: {r}");
+        }
         &mut self.0[c as usize][r as usize]
+    }
+
+    fn get_reachable_adjacent_cells(&self, cell: &Cell) -> Vec<&Cell> {
+        let (c, r) = cell.coord;
+        let mut ret = vec![];
+        let dc = [0, 1, 0, -1, -1, -1, 1, 1];
+        let dr = [1, 0, -1, 0, 1, -1, 1, -1];
+        for i in 0..8 {
+            let nc = c + dc[i];
+            let nr = r + dr[i];
+
+            // cell out of field is not reachable
+            if nc < Self::min_col()
+                || nc > Self::max_col()
+                || nr < Self::min_row()
+                || nr > Self::max_row()
+            {
+                continue;
+            }
+
+            let ncell = self.get_cell((nc, nr));
+            // obstacle is not reachable
+            if !ncell.is_passable() {
+                continue;
+            }
+
+            // cell blocked by diagonal obstacles is not reachable
+            if (nc - c) * (nr - r) != 0
+                && !self.get_cell((nc, r)).is_passable()
+                && !self.get_cell((c, nr)).is_passable()
+            {
+                continue;
+            }
+            ret.push(self.get_cell((nc, nr)));
+        }
+        ret
     }
 
     /// draw/redraw all the Cell's visual entity
@@ -269,7 +378,7 @@ impl CellField {
         info!("draw_all");
         for r in 0..Game::BOARD_ROW as i64 {
             for c in 0..Game::BOARD_COLUMN as i64 {
-                self.get_cell((c, r)).draw(
+                self.get_cell_mut((c, r)).draw(
                     &mut cmds,
                     &mut meshes,
                     &mut materials,
@@ -278,23 +387,19 @@ impl CellField {
         }
     }
 
-    #[allow(unused)]
-    fn min_col(&self) -> i64 {
+    fn min_col() -> i64 {
         0
     }
 
-    #[allow(unused)]
-    fn max_col(&self) -> i64 {
+    fn max_col() -> i64 {
         Game::BOARD_COLUMN as i64 - 1
     }
 
-    #[allow(unused)]
-    fn min_row(&self) -> i64 {
+    fn min_row() -> i64 {
         0
     }
 
-    #[allow(unused)]
-    fn max_row(&self) -> i64 {
+    fn max_row() -> i64 {
         Game::BOARD_ROW as i64 - 1
     }
 
@@ -312,7 +417,7 @@ fn cell_state(
     mut ev_update_cell: EventReader<UpdateCellEvent>,
 ) {
     for e in ev_update_cell.read() {
-        let cell = field.get_cell(e.coord);
+        let cell = field.get_cell_mut(e.coord);
         cell.state = e.new_state;
         cell.draw(&mut cmds, &mut meshes, &mut materials);
     }
@@ -367,7 +472,7 @@ fn debug_alter_cell_state(
 /// calculate all cell's distance to the debug target cell using BFS
 use super::input_event::DebugSetUnitDestEvent;
 #[cfg(debug_assertions)]
-fn debug_calculate_distance(
+fn debug_calculate_distance_direction(
     mut field: ResMut<CellField>,
     mut ev_debug_set_unit_dest: EventReader<DebugSetUnitDestEvent>,
     mut ev_debug_redraw: EventWriter<DebugRedrawEvent>,
@@ -377,16 +482,17 @@ fn debug_calculate_distance(
     }
     let dest = ev_debug_set_unit_dest.read().next().unwrap().0;
 
-    // reset previous results
-    info!("reset distances");
+    // calculate distance of each cell to the dest
+    info!("re-calculating distances");
     for c in 0..field.0.len() as i64 {
         for r in 0..field.0[0].len() as i64 {
-            field.get_cell((c, r)).debug_distance = f32::MAX;
+            field.get_cell_mut((c, r)).debug_distance = f32::MAX;
         }
     }
-    field.get_cell(dest).debug_distance = 0.0;
+    field.get_cell_mut(dest).debug_distance = 0.0;
 
     use std::collections::VecDeque;
+
     let dx = [0, 1, 0, -1, -1, -1, 1, 1];
     let dy = [1, 0, -1, 0, 1, -1, 1, -1];
     let mut q: VecDeque<(i64, i64, f32)> = VecDeque::new();
@@ -403,8 +509,6 @@ fn debug_calculate_distance(
             {
                 continue;
             }
-            let new_distance =
-                distance + ((dx[i] * dx[i] + dy[i] * dy[i]) as f32).sqrt();
             if !field.get_cell((nx, ny)).is_passable() {
                 continue;
             }
@@ -417,13 +521,98 @@ fn debug_calculate_distance(
                 }
             }
 
-            let ncell = &mut field.get_cell((nx, ny));
+            let new_distance =
+                distance + ((dx[i] * dx[i] + dy[i] * dy[i]) as f32).sqrt();
+            let ncell = &mut field.get_cell_mut((nx, ny));
             if new_distance < ncell.debug_distance {
                 ncell.debug_distance = new_distance;
                 q.push_back((nx, ny, new_distance));
             }
         }
     }
+
+    // calculate direction of each passable cell
+    info!("re-calculating directions");
+    for c in CellField::min_col()..=CellField::max_col() {
+        for r in CellField::min_row()..=CellField::max_row() {
+            let cell = field.get_cell((c, r));
+            if !cell.is_passable() || cell.coord == dest {
+                field.get_cell_mut((c, r)).debug_direction = Vec2::NAN;
+                continue;
+            }
+            let reachable_adj_cells: Vec<&Cell> =
+                field.get_reachable_adjacent_cells(cell);
+            let reachable_adj_cells = {
+                let mut ret = vec![];
+                for c in reachable_adj_cells {
+                    if c.debug_distance != f32::MAX {
+                        ret.push(c);
+                    }
+                }
+                ret
+            };
+
+            let mut to_adj_vecs = vec![];
+            let min_adj_dist = reachable_adj_cells
+                .iter()
+                .fold(f32::MAX, |accu, &x| accu.min(x.debug_distance));
+
+            if reachable_adj_cells.len() < 8 {
+                // this cell is adjacent to some obstacle, just make it point to
+                // the cell with min distance that is reachable
+                to_adj_vecs = vec![];
+                for target in &reachable_adj_cells {
+                    if !target.is_passable() {
+                        continue;
+                    }
+                    let (tar_c, tar_r) = target.coord;
+                    if (tar_c - c) * (tar_r - r) != 0
+                        && !field.get_cell((tar_c, r)).is_passable()
+                        && !field.get_cell((c, tar_r)).is_passable()
+                    {
+                        continue;
+                    }
+                    if target.debug_distance - min_adj_dist <= f32::EPSILON {
+                        to_adj_vecs = vec![Vec2 {
+                            x: (target.coord.0 - c) as f32,
+                            y: (target.coord.1 - r) as f32,
+                        }];
+                        break;
+                    }
+                }
+            } else {
+                for ac in &reachable_adj_cells {
+                    // this adjacent cell is just the dest
+                    if ac.coord == dest {
+                        let dir = Vec2 {
+                            x: (ac.coord.0 - c) as f32,
+                            y: (ac.coord.1 - r) as f32,
+                        };
+                        to_adj_vecs = vec![dir];
+                        break;
+                    }
+
+                    let dir_ac = Vec2 {
+                        x: (ac.coord.0 - cell.coord.0) as f32,
+                        y: (ac.coord.1 - cell.coord.1) as f32,
+                    }
+                    .normalize()
+                        * (min_adj_dist / ac.debug_distance);
+                    to_adj_vecs.push(dir_ac);
+                }
+            }
+
+            if to_adj_vecs.is_empty() {
+                info!("error calculating {:?}", cell.coord);
+                info!("min_adj_dist={}", min_adj_dist);
+            }
+            let direction = to_adj_vecs.iter().sum::<Vec2>().normalize();
+            // info!("direction for {:?} is {:?}", cell.coord, direction);
+
+            field.get_cell_mut((c, r)).debug_direction = direction;
+        }
+    }
+
     ev_debug_redraw.send(DebugRedrawEvent);
 }
 
