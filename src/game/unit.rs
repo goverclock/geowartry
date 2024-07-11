@@ -34,6 +34,7 @@ struct Physics2dBundle {
     collider_density: ColliderMassProperties,
     /// actual mass of this unit
     mass: AdditionalMassProperties,
+    force: ExternalForce,
     sleep: Sleeping,
 }
 
@@ -119,6 +120,10 @@ fn spawn_unit(
                         velocity: Velocity::zero(),
                         collider_density: ColliderMassProperties::Density(0.0),
                         mass: AdditionalMassProperties::Mass(1.0),
+                        force: ExternalForce {
+                            force: Vec2::ZERO,
+                            torque: 0.0,
+                        },
                         sleep: Sleeping::disabled(),
                     },
                     DebugMoveDest(None),
@@ -147,6 +152,10 @@ fn spawn_unit(
                         velocity: Velocity::zero(),
                         collider_density: ColliderMassProperties::Density(0.0),
                         mass: AdditionalMassProperties::Mass(1.0),
+                        force: ExternalForce {
+                            force: Vec2::ZERO,
+                            torque: 0.0,
+                        },
                         sleep: Sleeping::disabled(),
                     },
                 ));

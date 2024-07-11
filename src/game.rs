@@ -6,6 +6,7 @@ use bevy_rapier2d::{
 
 use crate::{layer, GlobalState};
 mod cell;
+mod field_entity;
 mod input_event;
 mod select_unit;
 mod unit;
@@ -68,17 +69,17 @@ fn setup(
     // });
 
     ev_spawn_unit.send(SpawnUnitEvent {
-        unit_type: UnitType::Miner,
-        cell_coord: (10, 0),
+        unit_type: UnitType::Attacker,
+        cell_coord: (10, 1),
     });
-    for i in 0..5 {
-        for j in 0..7 {
-            ev_spawn_unit.send(SpawnUnitEvent {
-                unit_type: UnitType::Attacker,
-                cell_coord: (i, j),
-            });
-        }
-    }
+    // for i in 0..5 {
+    //     for j in 0..7 {
+    //         ev_spawn_unit.send(SpawnUnitEvent {
+    //             unit_type: UnitType::Attacker,
+    //             cell_coord: (i, j),
+    //         });
+    //     }
+    // }
 }
 
 fn cleanup(

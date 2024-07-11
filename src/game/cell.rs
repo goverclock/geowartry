@@ -3,11 +3,13 @@ use core::panic;
 use super::Game;
 use super::Layer;
 use crate::GlobalState;
+use bevy::ecs::reflect::ReflectCommandExt;
 use bevy::{
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
     window::PrimaryWindow,
 };
+use bevy_rapier2d::parry::query::details::closest_points_ball_convex_polyhedron;
 
 /// Cell is **irrelevant** to any entity(except its visual), it just provides
 /// information to render the color of the grid, and assist in path finding
@@ -22,11 +24,11 @@ pub struct Cell {
     visual: Option<(Entity, Entity)>,
     /// distance of this cell to debug target cell
     #[cfg(debug_assertions)]
-    debug_distance: f32,
+    pub debug_distance: f32,
     #[cfg(debug_assertions)]
     debug_distance_visual: Option<Entity>,
     #[cfg(debug_assertions)]
-    debug_direction: Vec2,
+    pub debug_direction: Vec2,
     #[cfg(debug_assertions)]
     debug_direction_visual: Option<Entity>,
 }
@@ -55,7 +57,7 @@ pub struct UpdateCellEvent {
 }
 
 #[derive(Resource, Default)]
-struct CellField(Vec<Vec<Cell>>); // board[c][r]
+pub struct CellField(Vec<Vec<Cell>>); // board[c][r]
 
 #[cfg(debug_assertions)]
 #[derive(Event)]
@@ -100,12 +102,12 @@ fn setup(
 
     #[cfg(debug_assertions)]
     {
-        field.get_cell_mut((2, 3)).state = CellState::Water;
-        field.get_cell_mut((2, 4)).state = CellState::Water;
-        field.get_cell_mut((2, 5)).state = CellState::Water;
-        field.get_cell_mut((3, 4)).state = CellState::Iron;
-        field.get_cell_mut((3, 5)).state = CellState::Iron;
-        field.get_cell_mut((3, 6)).state = CellState::Iron;
+        // field.get_cell_mut((2, 3)).state = CellState::Water;
+        // field.get_cell_mut((2, 4)).state = CellState::Water;
+        // field.get_cell_mut((2, 5)).state = CellState::Water;
+        // field.get_cell_mut((3, 4)).state = CellState::Iron;
+        // field.get_cell_mut((3, 5)).state = CellState::Iron;
+        // field.get_cell_mut((3, 6)).state = CellState::Iron;
     }
 
     // and draw the cells
@@ -125,6 +127,14 @@ impl Cell {
         match self.state {
             Empty | Mine => true,
             _ => false,
+        }
+    }
+
+    /// the transform of the center of this cell
+    pub fn center(&self) -> Vec2 {
+        Vec2 {
+            x: self.coord.0 as f32 * Game::CELL_SIZE,
+            y: self.coord.1 as f32 * Game::CELL_SIZE,
         }
     }
 
@@ -298,7 +308,7 @@ impl CellField {
                         state: CellState::Empty,
                         visual: None,
                         #[cfg(debug_assertions)]
-                        debug_distance: 0.0,
+                        debug_distance: f32::NAN,
                         #[cfg(debug_assertions)]
                         debug_distance_visual: None,
                         #[cfg(debug_assertions)]
@@ -312,7 +322,7 @@ impl CellField {
     }
 
     /// TODO: should support negative coords
-    fn get_cell(&self, cell_coord: (i64, i64)) -> &Cell {
+    pub fn get_cell(&self, cell_coord: (i64, i64)) -> &Cell {
         let (c, r) = cell_coord;
         if c < Self::min_col() || c > Self::max_col() {
             panic!("invalid column index: {c}");
@@ -323,7 +333,7 @@ impl CellField {
         &self.0[c as usize][r as usize]
     }
 
-    fn get_cell_mut(&mut self, cell_coord: (i64, i64)) -> &mut Cell {
+    pub fn get_cell_mut(&mut self, cell_coord: (i64, i64)) -> &mut Cell {
         let (c, r) = cell_coord;
         if c < Self::min_col() || c > Self::max_col() {
             panic!("invalid column index: {c}");
@@ -366,6 +376,31 @@ impl CellField {
                 continue;
             }
             ret.push(self.get_cell((nc, nr)));
+        }
+        ret
+    }
+
+    pub fn get_adjacent_obstacles(&self, cell: &Cell) -> Vec<&Cell> {
+        let (c, r) = cell.coord;
+        let mut ret = vec![];
+        let dc = [0, 1, 0, -1, -1, -1, 1, 1];
+        let dr = [1, 0, -1, 0, 1, -1, 1, -1];
+        for i in 0..8 {
+            let nc = c + dc[i];
+            let nr = r + dr[i];
+
+            if nc < Self::min_col()
+                || nc > Self::max_col()
+                || nr < Self::min_row()
+                || nr > Self::max_row()
+            {
+                continue;
+            }
+
+            let ncell = self.get_cell((nc, nr));
+            if !ncell.is_passable() {
+                ret.push(ncell);
+            }
         }
         ret
     }
@@ -422,6 +457,24 @@ fn update_cell_state(
         let cell = field.get_cell_mut(e.coord);
         cell.state = e.new_state;
         cell.draw(&mut cmds, &mut meshes, &mut materials);
+
+        // TODO: doing some of the field_entity's job
+        #[cfg(debug_assertions)]
+        {
+            use bevy_rapier2d::prelude::*;
+            if !cell.is_passable() {
+                cmds.spawn(RigidBody::Fixed)
+                    .insert(Collider::cuboid(
+                        Game::CELL_SIZE / 2.0,
+                        Game::CELL_SIZE / 2.0,
+                    ))
+                    .insert(TransformBundle::from(Transform::from_xyz(
+                        cell.coord.0 as f32 * Game::CELL_SIZE,
+                        cell.coord.1 as f32 * Game::CELL_SIZE,
+                        super::layer::Layer::Debug.into(),
+                    )));
+            }
+        }
     }
 }
 

@@ -15,7 +15,8 @@ pub fn unit_move_plugin(app: &mut App) {
         .add_systems(OnExit(GlobalState::InGame), cleanup)
         .add_systems(
             Update,
-            debug_unit_set_dest.run_if(in_state(super::GlobalState::InGame)),
+            (debug_unit_set_dest, debug_unit_velocity)
+                .run_if(in_state(super::GlobalState::InGame)),
         );
 }
 
@@ -44,4 +45,53 @@ fn debug_unit_set_dest(
     //     }
     //     *dest = DebugMoveDest(Some(ev_dest));
     // }
+}
+
+use super::cell::CellField;
+use super::Unit;
+use bevy_rapier2d::dynamics::ExternalForce;
+use bevy_rapier2d::dynamics::Velocity;
+#[cfg(debug_assertions)]
+fn debug_unit_velocity(
+    field: Res<CellField>,
+    mut query_unit: Query<
+        (&mut Velocity, &mut ExternalForce, &Transform),
+        With<Unit>,
+    >,
+) {
+    for (mut v, mut f, tf) in query_unit.iter_mut() {
+        // get the cell the unit is in
+        let unit_pos = Vec2 {
+            x: tf.translation.x,
+            y: tf.translation.y,
+        };
+        let cell_coord = super::transform_to_cell(unit_pos);
+        let cell = field.get_cell(cell_coord);
+        let cell_center = cell.center();
+
+        // already in target cell, move directly to it
+        if cell.debug_distance == 0.0 {
+            let center_diff = Vec2 {
+                x: cell_center.x - unit_pos.x,
+                y: cell_center.y - unit_pos.y,
+            };
+            v.linvel = center_diff * 5.0;
+            f.force = Vec2::ZERO;
+            continue;
+        }
+
+        // apply cell's direction
+        if !cell.debug_direction.is_nan() {
+            let dir_v_diff = cell.debug_direction - v.linvel.normalize();
+            if !dir_v_diff.is_nan() {
+                f.force = (cell.debug_direction + dir_v_diff * 0.0) * 1000.0;
+            } else {
+                f.force = cell.debug_direction * 1000.0;
+            }
+        }
+
+        if v.linvel.length() > 200.0 {
+            v.linvel = v.linvel.normalize() * 200.0;
+        }
+    }
 }
