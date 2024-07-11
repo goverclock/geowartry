@@ -35,7 +35,7 @@ pub struct Cell {
 #[derive(Component)]
 struct CellVisual;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellState {
     #[default]
     Empty, // all else are actually implemented as entities
@@ -68,17 +68,23 @@ pub fn cell_plugin(app: &mut App) {
         .add_systems(
             OnExit(GlobalState::InGame),
             (super::despawn_with_component::<CellVisual>, cleanup),
-        )
-        .add_systems(Update, cell_state.run_if(in_state(GlobalState::InGame)));
+        );
+    // .add_systems(
+    //     Update,
+    //     update_cell_state.run_if(in_state(GlobalState::InGame)),
+    // );
 
     #[cfg(debug_assertions)]
     app.add_event::<DebugRedrawEvent>().add_systems(
         Update,
         (
             debug_alter_cell_state,
-            debug_calculate_distance_direction,
+            update_cell_state, // TODO: not debug, add to above
+            debug_calculate_distance,
+            debug_calculate_direction,
             debug_visual_redraw,
         )
+            .chain()
             .run_if(in_state(GlobalState::InGame)),
     );
 }
@@ -248,10 +254,6 @@ impl Cell {
 
         // direction visual
         let arrow = "-->".to_string();
-        // let arrow = format!(
-        //     "({:.1}, {:.1})",
-        //     self.debug_direction.x, self.debug_direction.y
-        // );
         let mut tf = Transform::from_xyz(
             c as f32 * Game::CELL_SIZE,
             r as f32 * Game::CELL_SIZE,
@@ -300,7 +302,7 @@ impl CellField {
                         #[cfg(debug_assertions)]
                         debug_distance_visual: None,
                         #[cfg(debug_assertions)]
-                        debug_direction: Vec2::ZERO,
+                        debug_direction: Vec2::NAN,
                         #[cfg(debug_assertions)]
                         debug_direction_visual: None,
                     })
@@ -409,7 +411,7 @@ impl CellField {
     }
 }
 
-fn cell_state(
+fn update_cell_state(
     mut cmds: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -423,13 +425,17 @@ fn cell_state(
     }
 }
 
+use super::unit_move::DebugTargetCell;
 /// use left&right shift to change a cell to empty or iron
 #[cfg(debug_assertions)]
 fn debug_alter_cell_state(
     kb_input: Res<ButtonInput<KeyCode>>,
     window: Query<&Window, With<PrimaryWindow>>,
     camera_tf: Query<(&Camera, &GlobalTransform)>,
+    field: Res<CellField>,
     mut ev_update_cell: EventWriter<UpdateCellEvent>,
+    mut ev_debug_set_unit_dest: EventWriter<DebugSetUnitDestEvent>,
+    target: ResMut<DebugTargetCell>,
 ) {
     let window = window.single();
     let mut target_state = None;
@@ -450,10 +456,14 @@ fn debug_alter_cell_state(
     let pos = pos.unwrap();
     let world_coord = super::window_to_world_coords(pos, &camera_tf).unwrap();
     let cell_coord = super::transform_to_cell(world_coord);
-    if cell_coord.0 < 0 || cell_coord.0 >= super::Game::BOARD_COLUMN as i64 {
+    if cell_coord.0 < CellField::min_col()
+        || cell_coord.0 > CellField::max_col()
+        || cell_coord.1 < CellField::min_row()
+        || cell_coord.1 > CellField::max_row()
+    {
         return;
     }
-    if cell_coord.1 < 0 || cell_coord.1 >= super::Game::BOARD_ROW as i64 {
+    if target_state.unwrap() == field.get_cell(cell_coord).state {
         return;
     }
     info!(
@@ -467,15 +477,17 @@ fn debug_alter_cell_state(
         coord: cell_coord,
         new_state: target_state.unwrap(),
     });
+    if let Some(t) = target.0 {
+        ev_debug_set_unit_dest.send(DebugSetUnitDestEvent(t));
+    }
 }
 
 /// calculate all cell's distance to the debug target cell using BFS
 use super::input_event::DebugSetUnitDestEvent;
 #[cfg(debug_assertions)]
-fn debug_calculate_distance_direction(
+fn debug_calculate_distance(
     mut field: ResMut<CellField>,
     mut ev_debug_set_unit_dest: EventReader<DebugSetUnitDestEvent>,
-    mut ev_debug_redraw: EventWriter<DebugRedrawEvent>,
 ) {
     if ev_debug_set_unit_dest.is_empty() {
         return;
@@ -530,6 +542,18 @@ fn debug_calculate_distance_direction(
             }
         }
     }
+}
+
+#[cfg(debug_assertions)]
+fn debug_calculate_direction(
+    mut field: ResMut<CellField>,
+    mut ev_debug_set_unit_dest: EventReader<DebugSetUnitDestEvent>,
+    mut ev_debug_redraw: EventWriter<DebugRedrawEvent>,
+) {
+    if ev_debug_set_unit_dest.is_empty() {
+        return;
+    }
+    let dest = ev_debug_set_unit_dest.read().next().unwrap().0;
 
     // calculate direction of each passable cell
     info!("re-calculating directions");
@@ -600,11 +624,6 @@ fn debug_calculate_distance_direction(
                         * (min_adj_dist / ac.debug_distance);
                     to_adj_vecs.push(dir_ac);
                 }
-            }
-
-            if to_adj_vecs.is_empty() {
-                info!("error calculating {:?}", cell.coord);
-                info!("min_adj_dist={}", min_adj_dist);
             }
             let direction = to_adj_vecs.iter().sum::<Vec2>().normalize();
             // info!("direction for {:?} is {:?}", cell.coord, direction);

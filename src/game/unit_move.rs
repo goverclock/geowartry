@@ -1,18 +1,27 @@
 use bevy::prelude::*;
 
+use crate::GlobalState;
+
 #[cfg(debug_assertions)]
 use super::input_event::DebugSetUnitDestEvent;
 
 #[cfg(debug_assertions)]
 #[derive(Resource, Default)]
-pub struct DebugTargetCell(Option<(i64, i64)>);
+pub struct DebugTargetCell(pub Option<(i64, i64)>);
 
 pub fn unit_move_plugin(app: &mut App) {
     #[cfg(debug_assertions)]
-    app.init_resource::<DebugTargetCell>().add_systems(
-        Update,
-        debug_unit_set_dest.run_if(in_state(super::GlobalState::InGame)),
-    );
+    app.init_resource::<DebugTargetCell>()
+        .add_systems(OnExit(GlobalState::InGame), cleanup)
+        .add_systems(
+            Update,
+            debug_unit_set_dest.run_if(in_state(super::GlobalState::InGame)),
+        );
+}
+
+#[cfg(debug_assertions)]
+fn cleanup(mut debug_target_cell: ResMut<DebugTargetCell>) {
+    debug_target_cell.0 = None;
 }
 
 #[cfg(debug_assertions)]
