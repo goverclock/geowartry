@@ -1,7 +1,10 @@
 # geowartry
 
-I'm making some silly game again.
+fuck rust I'm re-doing it in C++
 
-WIP
+btw it is a RTS game, people don't fucking play them anymore
 
-![img](pathfinding.png)
+I do what the fuck I want with it.
+
+Thank you raysan5/raylib-game-template
+
